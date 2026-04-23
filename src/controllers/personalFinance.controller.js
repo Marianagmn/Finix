@@ -1,3 +1,9 @@
+/**
+ * Personal Finance Controller
+ * Maneja todas las operaciones CRUD y análisis de finanzas personales
+ * @module controllers/personalFinance.controller
+ */
+
 const PersonalFinance = require('../models/personalFinance.model');
 const Account = require('../models/Account');
 const Category = require('../models/Category');
@@ -5,7 +11,12 @@ const predictionService = require('../services/prediction.service');
 const simulationService = require('../services/simulation.service');
 const analysisService = require('../services/financeAnalysis.service');
 
-// Fix #3 & #10: Helper for standardized error responses
+/**
+ * Maneja errores estandarizados para todas las respuestas
+ * @param {Response} res - Express response object
+ * @param {Error} error - Error capturado
+ * @returns {Response} JSON response con formato estándar
+ */
 const handleError = (res, error) => {
     if (error.name === 'ValidationError') {
         return res.status(400).json({ success: false, message: error.message });
@@ -20,14 +31,19 @@ const handleError = (res, error) => {
     });
 };
 
-// Fix #7: Reusable function for completed transactions query
+/**
+ * Obtiene transacciones financieras completadas del usuario
+ * @param {string} userId - ID del usuario
+ * @param {object} options - Opciones de consulta (limit, select)
+ * @returns {Promise<object[]>} Transacciones financieras completadas
+ */
 const getCompletedTransactions = async (userId, options = {}) => {
     const { limit = 10000, select = null } = options;
     
     const query = PersonalFinance.find({
         userId,
         estado: 'completado',
-        esTransferenciaInterna: false  // Fix #4: Exclude internal transfers
+        esTransferenciaInterna: false  
     });
     
     if (select) query.select(select);
@@ -35,7 +51,11 @@ const getCompletedTransactions = async (userId, options = {}) => {
     return query.lean().limit(limit);
 };
 
-// Fix #8: Rate limiting check for analytics
+/**
+ * Verifica si el usuario ha excedido el límite de análisis financiero
+ * @param {string} userId - ID del usuario
+ * @returns {Promise<object>} Resultado de la verificación (exceeded, count)
+ */
 const checkAnalyticsLimit = async (userId) => {
     const count = await PersonalFinance.countDocuments({ 
         userId, 
@@ -49,14 +69,21 @@ const checkAnalyticsLimit = async (userId) => {
     return { exceeded: false, count };
 };
 
+/**
+ * Crea un nuevo registro financiero
+ * Valida: propiedad de recursos referenciados, rango de fechas (máx 1 año atrás)
+ * POST /finances -> 201 Created
+ * @param {Request} req - Express request con body y user.id
+ * @param {Response} res - Express response
+ */
 exports.createFinance = async (req, res) => {
     try {
-        // Fix #2: Remove internal/control fields from whitelist
         const allowedFields = [
             'tipo', 'monto', 'moneda', 'tasaCambio', 'categoria',
             'cuentaOrigenId', 'cuentaDestinoId', 'metodoPago',
             'descripcion', 'fecha', 'estado', 'esAhorro',
-            'tags', 'location', 'notaTransaccion'
+            'tags', 'location', 'notaTransaccion',
+            'esTransferenciaInterna', 'transferenciaId', 'source'
         ];
 
         const data = {};
@@ -66,7 +93,6 @@ exports.createFinance = async (req, res) => {
             }
         });
 
-        // Fix #1: Validate ownership of referenced resources
         if (data.categoria) {
             const category = await Category.findOne({ _id: data.categoria, userId: req.user.id });
             if (!category) {
@@ -88,7 +114,6 @@ exports.createFinance = async (req, res) => {
             }
         }
 
-        // Fix #6: Validate date range
         if (data.fecha) {
             const fecha = new Date(data.fecha);
             const hoy = new Date();
@@ -102,7 +127,8 @@ exports.createFinance = async (req, res) => {
 
         const newFinance = new PersonalFinance({
             ...data,
-            userId: req.user.id
+            userId: req.user.id,
+            createdBy: req.user.id
         });
 
         const saved = await newFinance.save();
@@ -118,11 +144,17 @@ exports.createFinance = async (req, res) => {
     }
 };
 
+/**
+ * Obtiene todos los registros financieros del usuario con paginación
+ * Soporta query params: page, limit (máx 100)
+ * GET /finances -> 200 OK
+ * @param {Request} req - Express request con query params
+ * @param {Response} res - Express response
+ */
 exports.getAllFinances = async (req, res) => {
     try {
         const { page = 1, limit = 20 } = req.query;
 
-        // Sanitize and cap pagination params (prevent DOS)
         const pageNum = Math.max(1, parseInt(page, 10) || 1);
         const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
 
@@ -153,6 +185,13 @@ exports.getAllFinances = async (req, res) => {
     }
 };
 
+/**
+ * Obtiene un registro financiero por ID
+ * Valida: propiedad del recurso (userId match)
+ * GET /finances/:id -> 200 OK | 404 Not Found
+ * @param {Request} req - Express request con params.id
+ * @param {Response} res - Express response
+ */
 exports.getFinanceById = async (req, res) => {
     try {
         const finance = await PersonalFinance.findOne({
@@ -174,13 +213,21 @@ exports.getFinanceById = async (req, res) => {
     }
 };
 
+/**
+ * Actualiza un registro financiero existente
+ * Solo permite campos whitelist, valida propiedad
+ * PUT /finances/:id -> 200 OK | 404 Not Found
+ * @param {Request} req - Express request con params.id y body
+ * @param {Response} res - Express response
+ */
 exports.updateFinance = async (req, res) => {
     try {
         const allowedFields = [
             'tipo', 'monto', 'moneda', 'tasaCambio', 'categoria',
             'cuentaOrigenId', 'cuentaDestinoId', 'metodoPago',
             'descripcion', 'fecha', 'estado', 'esAhorro',
-            'tags', 'location', 'notaTransaccion'
+            'tags', 'location', 'notaTransaccion',
+            'esTransferenciaInterna', 'transferenciaId', 'source'
         ];
 
         const updateData = {};
@@ -195,7 +242,10 @@ exports.updateFinance = async (req, res) => {
                 _id: req.params.id,
                 userId: req.user.id
             },
-            updateData,
+            {
+                ...updateData,
+                updatedBy: req.user.id
+            },
             {
                 new: true,
                 runValidators: true
@@ -217,6 +267,12 @@ exports.updateFinance = async (req, res) => {
     }
 };
 
+/**
+ * Elimina (soft delete) un registro financiero
+ * DELETE /finances/:id -> 204 No Content | 404 Not Found
+ * @param {Request} req - Express request con params.id
+ * @param {Response} res - Express response
+ */
 exports.deleteFinance = async (req, res) => {
     try {
         const finance = await PersonalFinance.findOne({
@@ -230,19 +286,24 @@ exports.deleteFinance = async (req, res) => {
 
         await finance.softDelete();
 
-        res.status(200).json({
-            success: true,
-            message: 'Registro eliminado'
-        });
+        // 204 No Content - estándar REST para DELETE exitoso
+        res.status(204).send();
 
     } catch (error) {
         handleError(res, error);
     }
 };
 
+/**
+ * Obtiene análisis financiero del usuario
+ * Rate limit: máx 10,000 registros procesados
+ * GET /finances/analysis -> 200 OK | 429 Too Many Requests
+ * @param {Request} req - Express request con user.id
+ * @param {Response} res - Express response
+ */
 exports.getAnalysis = async (req, res) => {
     try {
-        // Fix #8: Check rate limit
+        
         const limitCheck = await checkAnalyticsLimit(req.user.id);
         if (limitCheck.exceeded) {
             return res.status(429).json({ 
@@ -251,7 +312,6 @@ exports.getAnalysis = async (req, res) => {
             });
         }
 
-        // Fix #7: Use reusable query function
         const data = await getCompletedTransactions(req.user.id);
 
         const analysis = analysisService.analyze(data);
@@ -266,9 +326,15 @@ exports.getAnalysis = async (req, res) => {
     }
 };
 
+/**
+ * Obtiene predicción de gastos basada en historial
+ * Rate limit: máx 10,000 registros + 10 req/min por usuario
+ * GET /finances/prediction -> 200 OK | 429 Too Many Requests
+ * @param {Request} req - Express request con user.id
+ * @param {Response} res - Express response
+ */
 exports.getPrediction = async (req, res) => {
     try {
-        // Fix #8: Check rate limit
         const limitCheck = await checkAnalyticsLimit(req.user.id);
         if (limitCheck.exceeded) {
             return res.status(429).json({ 
@@ -277,7 +343,6 @@ exports.getPrediction = async (req, res) => {
             });
         }
 
-        // Fix #7: Use reusable query function
         const data = await getCompletedTransactions(req.user.id);
 
         const prediction = predictionService.predict(data);
@@ -292,9 +357,15 @@ exports.getPrediction = async (req, res) => {
     }
 };
 
+/**
+ * Ejecuta simulación financiera con escenarios
+ * Rate limit: máx 10,000 registros + 10 req/min por usuario
+ * GET /finances/simulation -> 200 OK | 429 Too Many Requests
+ * @param {Request} req - Express request con user.id
+ * @param {Response} res - Express response
+ */
 exports.getSimulation = async (req, res) => {
     try {
-        // Fix #8: Check rate limit
         const limitCheck = await checkAnalyticsLimit(req.user.id);
         if (limitCheck.exceeded) {
             return res.status(429).json({ 
@@ -303,7 +374,6 @@ exports.getSimulation = async (req, res) => {
             });
         }
 
-        // Fix #7: Use reusable query function
         const data = await getCompletedTransactions(req.user.id);
 
         const simulation = simulationService.simulate(data);

@@ -220,7 +220,7 @@ const personalFinanceSchema = new Schema({
     toObject: { getters: true, virtuals: true }
 });
 
-// Optimized compound index for most common query pattern (user + status + date)
+
 personalFinanceSchema.index({ userId: 1, estado: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, tipo: 1, fecha: -1 });
