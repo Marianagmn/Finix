@@ -1,9 +1,19 @@
+/**
+ * PersonalFinance Model
+ * Enterprise-grade financial transaction management
+ * Features: multi-currency, GeoJSON locations, AI metadata, audit trail, soft delete
+ * Money handling: stored in cents (integer) with automatic decimal conversion
+ * @module models/PersonalFinance
+ */
 const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
 
+// Transaction type constants
 const TIPOS = ['ingreso', 'gasto', 'transferencia'];
+// Transaction status constants
 const ESTADOS = ['pendiente', 'completado', 'cancelado'];
+// Payment method constants (granular for analytics)
 const METODOS_PAGO = [
     'efectivo',
     'tarjeta_credito',
@@ -11,9 +21,11 @@ const METODOS_PAGO = [
     'transferencia_bancaria',
     'wallet'
 ];
+// Supported currencies (expandable)
 const MONEDAS = ['COP', 'USD', 'EUR'];
 
 const personalFinanceSchema = new Schema({
+    // Transaction owner reference
     userId: {
         type: Schema.Types.ObjectId,
         ref: 'User',
@@ -28,12 +40,13 @@ const personalFinanceSchema = new Schema({
         index: true
     },
 
+    // Transaction amount (stored in cents for precision, displayed as decimal)
     monto: {
         type: Number,
         required: true,
         min: [1, 'El monto debe ser mayor a 0'],
-        set: v => Math.round(v * 100),
-        get: v => v / 100
+        set: v => Math.round(v * 100),  // Convert dollars to cents on save
+        get: v => v / 100               // Convert cents to dollars on read
     },
 
     moneda: {
@@ -42,11 +55,13 @@ const personalFinanceSchema = new Schema({
         default: 'COP'
     },
 
+    // Exchange rate to COP (1 for COP transactions, required for foreign currency)
     tasaCambio: {
         type: Number,
         default: 1
     },
 
+    // Category classification (references Category model)
     categoria: {
         type: Schema.Types.ObjectId,
         ref: 'Category',
@@ -54,6 +69,7 @@ const personalFinanceSchema = new Schema({
         index: true
     },
 
+    // Source account (required for gastos and transferencias)
     cuentaOrigenId: {
         type: Schema.Types.ObjectId,
         ref: 'Account',
@@ -62,6 +78,7 @@ const personalFinanceSchema = new Schema({
         }
     },
 
+    // Destination account (required for ingresos and transferencias)
     cuentaDestinoId: {
         type: Schema.Types.ObjectId,
         ref: 'Account',
@@ -128,6 +145,7 @@ const personalFinanceSchema = new Schema({
         address: String
     },
 
+    // Internal transfer flag (excluded from balance calculations to avoid double-counting)
     esTransferenciaInterna: {
         type: Boolean,
         default: false
@@ -144,20 +162,22 @@ const personalFinanceSchema = new Schema({
         default: 'manual'
     },
 
+    // AI-generated insights and predictions
     aiMetadata: {
         clasificacion: {
-            categoriaSugerida: String,
-            confianza: Number
+            categoriaSugerida: String,   // ML-suggested category
+            confianza: Number            // 0-1 confidence score
         },
         analisis: {
-            patronDetectado: String,
-            alerta: String
+            patronDetectado: String,     // Recurring pattern identifier
+            alerta: String               // Anomaly detection alerts
         },
         predicciones: {
-            gastoMensual: Number
+            gastoMensual: Number         // Forecasted monthly spend
         }
     },
 
+    // Audit trail - tracks all field modifications (auto-limited to 50 entries)
     historialCambios: [{
         campo: String,
         valorAnterior: Schema.Types.Mixed,
@@ -179,6 +199,7 @@ const personalFinanceSchema = new Schema({
         ref: 'User'
     },
 
+    // Soft delete flag - financial records must never be truly deleted
     isDeleted: {
         type: Boolean,
         default: false,
