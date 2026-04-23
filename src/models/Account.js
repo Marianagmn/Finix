@@ -68,8 +68,24 @@ const accountSchema = new Schema({
 
 accountSchema.index({ userId: 1, nombre: 1 });
 
+accountSchema.methods.softDelete = function () {
+    this.isDeleted = true;
+    this.deletedAt = new Date();
+    return this.save();
+};
+
 accountSchema.pre(/^find/, function(next) {
     this.where({ isDeleted: false });
+    next();
+});
+
+accountSchema.pre('aggregate', function(next) {
+    const pipeline = this.pipeline();
+    if (pipeline.length && pipeline[0].$geoNear) {
+        pipeline.splice(1, 0, { $match: { isDeleted: false } });
+    } else {
+        pipeline.unshift({ $match: { isDeleted: false } });
+    }
     next();
 });
 

@@ -220,11 +220,12 @@ const personalFinanceSchema = new Schema({
     toObject: { getters: true, virtuals: true }
 });
 
+// Optimized compound index for most common query pattern (user + status + date)
+personalFinanceSchema.index({ userId: 1, estado: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, tipo: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, categoria: 1 });
 personalFinanceSchema.index({ userId: 1, estado: 1 });
-personalFinanceSchema.index({ userId: 1, fecha: -1, tipo: 1 });
 // NOTE: Multikey index - use only if filtering by tags is frequent
 personalFinanceSchema.index({ location: '2dsphere' });
 
