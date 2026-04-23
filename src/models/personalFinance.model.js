@@ -1,29 +1,79 @@
 const mongoose = require('mongoose');
 
-const personalFinanceSchema = new mongoose.Schema({
-    
+const { Schema } = mongoose;
+
+const TIPOS = ['ingreso', 'gasto', 'transferencia'];
+const ESTADOS = ['pendiente', 'completado', 'cancelado'];
+const METODOS_PAGO = [
+    'efectivo',
+    'tarjeta_credito',
+    'tarjeta_debito',
+    'transferencia_bancaria',
+    'wallet'
+];
+const MONEDAS = ['COP', 'USD', 'EUR'];
+
+const personalFinanceSchema = new Schema({
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
+        type: Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
+        index: true
     },
 
     tipo: {
         type: String,
-        enum: ['ingreso', 'gasto'],
-        required: true
+        enum: TIPOS,
+        required: true,
+        index: true
     },
 
     monto: {
         type: Number,
         required: true,
-        min: 0
+        min: [1, 'El monto debe ser mayor a 0'],
+        set: v => Math.round(v * 100),
+        get: v => v / 100
+    },
+
+    moneda: {
+        type: String,
+        enum: MONEDAS,
+        default: 'COP'
+    },
+
+    tasaCambio: {
+        type: Number,
+        default: 1
     },
 
     categoria: {
-        type: String,
+        type: Schema.Types.ObjectId,
+        ref: 'Category',
         required: true,
-        trim: true
+        index: true
+    },
+
+    cuentaOrigenId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Account',
+        required: function() {
+            return this.tipo === 'gasto';
+        }
+    },
+
+    cuentaDestinoId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Account',
+        required: function() {
+            return this.tipo === 'ingreso' || this.tipo === 'transferencia';
+        }
+    },
+
+    metodoPago: {
+        type: String,
+        enum: METODOS_PAGO,
+        default: 'efectivo'
     },
 
     descripcion: {
@@ -34,22 +84,216 @@ const personalFinanceSchema = new mongoose.Schema({
 
     fecha: {
         type: Date,
-        default: Date.now
+        default: () => new Date(),
+        index: true
     },
 
-    meta: {
+    estado: {
         type: String,
-        trim: true,
-        default: null
+        enum: ESTADOS,
+        default: 'completado',
+        index: true
     },
 
     esAhorro: {
         type: Boolean,
         default: false
+    },
+
+    tags: [{
+        type: String,
+        lowercase: true,
+        trim: true
+    }],
+
+    location: {
+        type: {
+            type: String,
+            enum: ['Point'],
+            default: 'Point'
+        },
+        coordinates: {
+            type: [Number],
+            required: false,
+            validate: {
+                validator: function(v) {
+                    if (!v) return true;
+                    return v.length === 2 &&
+                        v[0] >= -180 && v[0] <= 180 &&
+                        v[1] >= -90 && v[1] <= 90;
+                },
+                message: 'Coordenadas invalidas'
+            }
+        },
+        address: String
+    },
+
+    esTransferenciaInterna: {
+        type: Boolean,
+        default: false
+    },
+
+    transferenciaId: {
+        type: Schema.Types.ObjectId,
+        ref: 'PersonalFinance'
+    },
+
+    source: {
+        type: String,
+        enum: ['manual', 'ia', 'importado'],
+        default: 'manual'
+    },
+
+    aiMetadata: {
+        clasificacion: {
+            categoriaSugerida: String,
+            confianza: Number
+        },
+        analisis: {
+            patronDetectado: String,
+            alerta: String
+        },
+        predicciones: {
+            gastoMensual: Number
+        }
+    },
+
+    historialCambios: [{
+        campo: String,
+        valorAnterior: Schema.Types.Mixed,
+        valorNuevo: Schema.Types.Mixed,
+        modificadoPor: {
+            type: Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        fecha: { type: Date, default: Date.now }
+    }],
+
+    createdBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User'
+    },
+
+    updatedBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User'
+    },
+
+    isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+
+    deletedAt: {
+        type: Date
+    },
+
+    notaTransaccion: {
+        type: String
     }
 
 }, {
-    timestamps: true
+    timestamps: true,
+    toJSON: { getters: true, virtuals: true },
+    toObject: { getters: true, virtuals: true }
+});
+
+personalFinanceSchema.index({ userId: 1, fecha: -1 });
+personalFinanceSchema.index({ userId: 1, tipo: 1, fecha: -1 });
+personalFinanceSchema.index({ userId: 1, categoria: 1 });
+personalFinanceSchema.index({ userId: 1, estado: 1 });
+personalFinanceSchema.index({ userId: 1, fecha: -1, tipo: 1 });
+// NOTE: Multikey index - use only if filtering by tags is frequent
+personalFinanceSchema.index({ location: '2dsphere' });
+
+personalFinanceSchema.statics.toCents = (value) => {
+    return Math.round(value * 100);
+};
+
+// Synchronous validation - async checks moved to service layer
+personalFinanceSchema.pre('validate', function (next) {
+    if (this.tipo === 'transferencia' && !this.descripcion) {
+        return next(new Error('Las transferencias requieren descripción'));
+    }
+
+    if (this.tipo === 'transferencia') {
+        if (!this.transferenciaId) {
+            return next(new Error('Transferencia debe estar vinculada'));
+        }
+        if (this.cuentaOrigenId?.toString() === this.cuentaDestinoId?.toString()) {
+            return next(new Error('Cuenta origen y destino no pueden ser iguales'));
+        }
+    }
+
+    if (this.tipo === 'gasto' && !this.cuentaOrigenId) {
+        return next(new Error('Un gasto requiere cuenta origen'));
+    }
+
+    if (this.tipo === 'ingreso' && !this.cuentaDestinoId) {
+        return next(new Error('Un ingreso requiere cuenta destino'));
+    }
+
+    if (this.moneda !== 'COP' && (!this.tasaCambio || this.tasaCambio <= 0)) {
+        return next(new Error('Tasa de cambio inválida'));
+    }
+
+    next();
+});
+
+personalFinanceSchema.methods.softDelete = function () {
+    this.isDeleted = true;
+    this.deletedAt = new Date();
+    return this.save();
+};
+
+personalFinanceSchema.pre(/^find/, function (next) {
+    this.where({ isDeleted: false });
+    next();
+});
+
+personalFinanceSchema.pre('aggregate', function(next) {
+    const pipeline = this.pipeline();
+
+    if (pipeline.length && pipeline[0].$geoNear) {
+        pipeline.splice(1, 0, { $match: { isDeleted: false } });
+    } else {
+        pipeline.unshift({ $match: { isDeleted: false } });
+    }
+
+    next();
+});
+
+personalFinanceSchema.pre('save', function(next) {
+    if (!this.isModified()) return next();
+
+    // Limit audit trail size (MongoDB 16MB doc limit)
+    if (this.historialCambios.length > 50) {
+        this.historialCambios = this.historialCambios.slice(-50);
+    }
+
+    if (!this.$__.original) {
+        this.$__.original = this.toObject({ depopulate: true });
+    }
+
+    const original = this.$__.original;
+
+    this.modifiedPaths().forEach(field => {
+        if (field !== 'historialCambios' && field !== 'updatedAt') {
+            // Use this.get() for deep object/array tracking
+            const valorNuevo = this.get(field);
+            const valorAnterior = original[field];
+
+            this.historialCambios.push({
+                campo: field,
+                valorAnterior,
+                valorNuevo,
+                fecha: new Date()
+            });
+        }
+    });
+
+    next();
 });
 
 module.exports = mongoose.model('PersonalFinance', personalFinanceSchema);
