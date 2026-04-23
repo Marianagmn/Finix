@@ -226,6 +226,8 @@ personalFinanceSchema.index({ userId: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, tipo: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, categoria: 1 });
 personalFinanceSchema.index({ userId: 1, estado: 1 });
+// FIX: Index for analytics queries filtering internal transfers
+personalFinanceSchema.index({ userId: 1, estado: 1, esTransferenciaInterna: 1, fecha: -1 });
 // NOTE: Multikey index - use only if filtering by tags is frequent
 personalFinanceSchema.index({ location: '2dsphere' });
 

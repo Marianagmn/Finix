@@ -15,6 +15,16 @@ const ESTADOS = {
 };
 
 /**
+ * Normalizes category strings consistently across all services
+ * @param {*} cat - Raw category value
+ * @returns {string} Normalized category
+ */
+const normalizarCategoria = (cat) => {
+    if (!cat) return 'sin_categoria';
+    return cat.toString().toLowerCase().trim().replace(/\s+/g, '_') || 'sin_categoria';
+};
+
+/**
  * Calculates linear regression slope using REAL TIME (timestamps)
  * More accurate than using array indices for irregularly-spaced transactions
  * @param {Array} values - Array of numeric values (montos)

@@ -32,6 +32,19 @@ const handleError = (res, error) => {
 };
 
 /**
+ * Normaliza montos desde centavos a moneda real
+ * El modelo almacena en centavos (set: v => v * 100) pero lean() no aplica getters
+ * @param {Array} transactions - Transacciones desde lean()
+ * @returns {Array} Transacciones con montos normalizados
+ */
+const normalizeTransactionAmounts = (transactions) => {
+    return transactions.map(t => ({
+        ...t,
+        monto: t.monto / 100  // Convertir centavos a moneda real
+    }));
+};
+
+/**
  * Obtiene transacciones financieras completadas del usuario
  * @param {string} userId - ID del usuario
  * @param {object} options - Opciones de consulta (limit, select)
@@ -48,7 +61,10 @@ const getCompletedTransactions = async (userId, options = {}) => {
     
     if (select) query.select(select);
     
-    return query.lean().limit(limit);
+    const data = await query.lean().limit(limit);
+    
+    // FIX CRÍTICO: Normalizar montos de centavos a moneda real
+    return normalizeTransactionAmounts(data);
 };
 
 /**
@@ -318,7 +334,7 @@ exports.getAnalysis = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            data: analysis
+            data: analysis.data || analysis
         });
 
     } catch (error) {
@@ -348,8 +364,9 @@ exports.getPrediction = async (req, res) => {
         const prediction = predictionService.predict(data);
 
         res.status(200).json({
-            success: true,
-            data: prediction
+            success: prediction.success,
+            data: prediction.data,
+            message: prediction.message
         });
 
     } catch (error) {
@@ -379,8 +396,9 @@ exports.getSimulation = async (req, res) => {
         const simulation = simulationService.simulate(data);
 
         res.status(200).json({
-            success: true,
-            data: simulation
+            success: simulation.success,
+            data: simulation.data,
+            message: simulation.message
         });
 
     } catch (error) {
