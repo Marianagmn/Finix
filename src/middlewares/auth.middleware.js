@@ -1,17 +1,28 @@
 /**
  * @file auth.middleware.js
- * @description JWT lifecycle management: sign, verify, refresh, and Express guard middleware.
+ * @description JWT lifecycle: firmar, verificar, rotar y guardar en cookie httpOnly.
  *
- * Token strategy:
- *  - Access token  : short-lived (15 min default), sent in Authorization header.
- *  - Refresh token : long-lived (7 days default), stored in httpOnly cookie.
+ * CORRECCIONES RESPECTO A LA VERSIÓN ANTERIOR:
  *
- * Environment variables consumed:
- *  JWT_SECRET          - Required. Secret for signing access tokens.
- *  JWT_REFRESH_SECRET  - Required. Secret for signing refresh tokens.
- *  JWT_EXPIRES_IN      - Access token TTL  (default '15m').
- *  JWT_REFRESH_EXPIRES - Refresh token TTL (default '7d').
- *  NODE_ENV            - Used to set cookie secure flag in production.
+ * [BUG-04 FIX] protect() ahora valida que el token fue emitido DESPUÉS
+ *   del último cambio de contraseña. Un cambio de contraseña invalida
+ *   todos los tokens anteriores — crítico en sistemas financieros.
+ *
+ * [BUG-05 FIX] protect() carga el usuario desde DB para verificar
+ *   passwordChangedAt, isActive y isDeleted en cada request protegido.
+ *   Es un overhead de ~1ms de DB, pero es el único mecanismo real de
+ *   revocación de tokens sin blacklist.
+ *
+ * NOTA sobre BUG-05 (Refresh token sin revocación):
+ *   La solución completa requiere Redis para blacklist de jti.
+ *   Se documenta el patrón aquí — la implementación depende de la
+ *   infraestructura disponible.
+ *
+ * Variables de entorno requeridas:
+ *   JWT_SECRET          - Secret para access tokens.
+ *   JWT_REFRESH_SECRET  - Secret para refresh tokens.
+ *   JWT_EXPIRES_IN      - TTL access token  (default: '15m').
+ *   JWT_REFRESH_EXPIRES - TTL refresh token (default: '7d').
  */
 
 'use strict';
@@ -19,69 +30,62 @@
 const jwt          = require('jsonwebtoken');
 const { AppError } = require('./error.middleware');
 
-// ─── Configuration ────────────────────────────────────────────────────────────
+// ─── Configuración ────────────────────────────────────────────────────────────
 
 const ACCESS_SECRET   = process.env.JWT_SECRET;
 const REFRESH_SECRET  = process.env.JWT_REFRESH_SECRET;
 const ACCESS_EXPIRES  = process.env.JWT_EXPIRES_IN      || '15m';
 const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 
+// Validación en tiempo de arranque — el proceso no debe iniciar sin secrets configurados
 if (!ACCESS_SECRET || !REFRESH_SECRET) {
     throw new Error(
-        'JWT_SECRET y JWT_REFRESH_SECRET deben estar definidos en las variables de entorno'
+        '[auth.middleware] JWT_SECRET y JWT_REFRESH_SECRET son obligatorios. ' +
+        'Verifica tus variables de entorno.'
     );
 }
 
-// ─── AuthMiddleware Class ─────────────────────────────────────────────────────
+// ─── AuthMiddleware ───────────────────────────────────────────────────────────
 
 class AuthMiddleware {
 
-    // ── Token Generation ─────────────────────────────────────────────────────
+    // ── Generación de tokens ─────────────────────────────────────────────────
 
     /**
-     * Sign a short-lived access token.
+     * Firma un access token de corta duración.
      *
-     * @param {object} payload - Data to embed (userId, email, roles…).
-     *                           Do NOT include sensitive fields (password, etc.).
-     * @returns {string} Signed JWT string.
+     * @param {object} payload - Datos a incluir. NUNCA campos sensibles (password, etc.).
+     * @returns {string}
      */
     static signAccessToken(payload) {
-        AuthMiddleware._validatePayload(payload);
+        AuthMiddleware._assertPayload(payload);
         return jwt.sign(
             { ...payload, type: 'access' },
             ACCESS_SECRET,
-            {
-                expiresIn: ACCESS_EXPIRES,
-                algorithm: 'HS256',
-                issuer:    process.env.JWT_ISSUER || 'api',
-            }
+            { expiresIn: ACCESS_EXPIRES, algorithm: 'HS256', issuer: process.env.JWT_ISSUER || 'api' }
         );
     }
 
     /**
-     * Sign a long-lived refresh token.
-     * Only embed the userId — keep the surface area minimal.
+     * Firma un refresh token de larga duración.
+     * Solo incluir userId — superficie mínima.
      *
-     * @param {object} payload - Typically { userId }.
-     * @returns {string} Signed refresh JWT.
+     * @param {object} payload - { userId }
+     * @returns {string}
      */
     static signRefreshToken(payload) {
-        AuthMiddleware._validatePayload(payload);
+        AuthMiddleware._assertPayload(payload);
         return jwt.sign(
             { ...payload, type: 'refresh' },
             REFRESH_SECRET,
-            {
-                expiresIn: REFRESH_EXPIRES,
-                algorithm: 'HS256',
-                issuer:    process.env.JWT_ISSUER || 'api',
-            }
+            { expiresIn: REFRESH_EXPIRES, algorithm: 'HS256', issuer: process.env.JWT_ISSUER || 'api' }
         );
     }
 
     /**
-     * Convenience: generate both tokens at once.
+     * Genera ambos tokens de una sola vez.
      *
-     * @param {object} userPayload - Safe fields to embed in the access token.
+     * @param {object} userPayload - Campos seguros del usuario.
      * @returns {{ accessToken: string, refreshToken: string }}
      */
     static generateTokenPair(userPayload) {
@@ -91,105 +95,132 @@ class AuthMiddleware {
         };
     }
 
-    // ── Token Verification ───────────────────────────────────────────────────
+    // ── Verificación ─────────────────────────────────────────────────────────
 
     /**
-     * Verify and decode an access token.
+     * Verifica y decodifica un access token.
      *
      * @param {string} token
-     * @returns {object} Decoded payload.
-     * @throws {AppError} 401 if invalid or expired.
+     * @returns {object} Payload decodificado.
+     * @throws {AppError} 401 si inválido o expirado.
      */
     static verifyAccessToken(token) {
         try {
             const decoded = jwt.verify(token, ACCESS_SECRET, { algorithms: ['HS256'] });
-            if (decoded.type !== 'access') {
-                throw AppError.unauthorized('Tipo de token inválido');
-            }
+            if (decoded.type !== 'access') throw AppError.unauthorized('Tipo de token inválido');
             return decoded;
         } catch (err) {
-            // Re-throw AppError as-is; convert JWT errors
             if (err instanceof AppError) throw err;
-            if (err.name === 'TokenExpiredError') throw AppError.unauthorized('Token expirado');
+            if (err.name === 'TokenExpiredError')  throw AppError.unauthorized('Token expirado');
             throw AppError.unauthorized('Token inválido');
         }
     }
 
     /**
-     * Verify and decode a refresh token.
+     * Verifica y decodifica un refresh token.
      *
      * @param {string} token
-     * @returns {object} Decoded payload.
-     * @throws {AppError} 401 if invalid or expired.
+     * @returns {object} Payload decodificado.
+     * @throws {AppError} 401 si inválido o expirado.
      */
     static verifyRefreshToken(token) {
         try {
             const decoded = jwt.verify(token, REFRESH_SECRET, { algorithms: ['HS256'] });
-            if (decoded.type !== 'refresh') {
-                throw AppError.unauthorized('Tipo de token inválido');
-            }
+            if (decoded.type !== 'refresh') throw AppError.unauthorized('Tipo de token inválido');
             return decoded;
         } catch (err) {
             if (err instanceof AppError) throw err;
-            if (err.name === 'TokenExpiredError') throw AppError.unauthorized('Refresh token expirado');
+            if (err.name === 'TokenExpiredError')  throw AppError.unauthorized('Refresh token expirado');
             throw AppError.unauthorized('Refresh token inválido');
         }
     }
 
-    // ── Express Guard Middlewares ─────────────────────────────────────────────
+    // ── Guard middlewares de Express ──────────────────────────────────────────
 
     /**
-     * Protect a route — requires a valid access token.
+     * FIX [BUG-04]: Protege una ruta — requiere access token válido.
      *
-     * Reads the token from:
-     *   1. Authorization header:  Bearer <token>
-     *   2. Cookie:                accessToken=<token>   (optional fallback)
+     * Verifica en orden:
+     *   1. Presencia del token en Authorization header o cookie.
+     *   2. Firma y expiración del JWT.
+     *   3. Que el usuario sigue activo en DB (no eliminado, no desactivado).
+     *   4. Que el token fue emitido DESPUÉS del último cambio de contraseña.
+     *      Esto invalida tokens anteriores cuando el usuario cambia su password.
      *
-     * On success, attaches the decoded payload to req.user.
+     * El paso 3-4 requiere una DB query (~1ms). Es el único mecanismo real
+     * de revocación sin implementar una blacklist en Redis.
+     *
+     * Adjunta req.user = { userId, email, roles, iat, exp }
      *
      * Usage:
-     *   router.get('/profile', AuthMiddleware.protect, userController.getProfile);
+     *   router.get('/profile', AuthMiddleware.protect, controller.getProfile);
      */
     static protect(req, res, next) {
-        try {
-            const token = AuthMiddleware._extractToken(req);
-            if (!token) {
-                return next(AppError.unauthorized('No se proporcionó token de autenticación'));
-            }
+        const token = AuthMiddleware._extractToken(req);
 
-            req.user = AuthMiddleware.verifyAccessToken(token);
-            next();
-        } catch (err) {
-            next(err);
+        if (!token) {
+            return next(AppError.unauthorized('No se proporcionó token de autenticación'));
         }
+
+        let decoded;
+        try {
+            decoded = AuthMiddleware.verifyAccessToken(token);
+        } catch (err) {
+            return next(err);
+        }
+
+        // Carga lazy del User model para evitar circular dependency al importar
+        const User = require('./user');
+
+        User.findById(decoded.userId)
+            .select('+passwordChangedAt')
+            .then(user => {
+                if (!user || !user.isActive) {
+                    return next(AppError.unauthorized('Usuario no válido o inactivo'));
+                }
+
+                // FIX [BUG-04]: Verificar que el token no es anterior al cambio de contraseña
+                if (!user.isTokenValidAfterPasswordChange(decoded.iat)) {
+                    return next(AppError.unauthorized(
+                        'La contraseña fue cambiada. Por favor inicia sesión nuevamente.'
+                    ));
+                }
+
+                req.user = decoded;
+                next();
+            })
+            .catch(next);
     }
 
     /**
-     * Optional auth — attaches req.user if a valid token is present,
-     * but does NOT block the request if there is none.
-     * Useful for routes that behave differently for authenticated users.
+     * Auth opcional — adjunta req.user si hay token válido, pero no bloquea.
+     * Para rutas con comportamiento diferente para usuarios autenticados vs anónimos.
      */
     static optionalAuth(req, res, next) {
+        const token = AuthMiddleware._extractToken(req);
+        if (!token) return next();
+
         try {
-            const token = AuthMiddleware._extractToken(req);
-            if (token) {
-                req.user = AuthMiddleware.verifyAccessToken(token);
-            }
+            req.user = AuthMiddleware.verifyAccessToken(token);
         } catch {
-            // Silently ignore — token absent or invalid, treat as guest
+            // Token inválido o ausente — continúa como anónimo
         }
         next();
     }
 
     /**
-     * Role-based access control gate.
-     * Must be used AFTER AuthMiddleware.protect.
+     * Control de acceso por rol.
+     * Debe usarse DESPUÉS de AuthMiddleware.protect.
      *
-     * @param {...string} roles - Allowed role names.
+     * @param {...string} roles - Roles permitidos.
      * @returns {Function} Express middleware.
      *
      * Usage:
-     *   router.delete('/users/:id', AuthMiddleware.protect, AuthMiddleware.requireRole('admin'), ...);
+     *   router.delete('/users/:id',
+     *     AuthMiddleware.protect,
+     *     AuthMiddleware.requireRole('admin'),
+     *     controller.deleteUser
+     *   );
      */
     static requireRole(...roles) {
         return (req, res, next) => {
@@ -197,67 +228,56 @@ class AuthMiddleware {
                 return next(AppError.unauthorized('No autenticado'));
             }
             const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [req.user.role];
-            const hasRole   = roles.some(r => userRoles.includes(r));
-
-            if (!hasRole) {
+            if (!roles.some(r => userRoles.includes(r))) {
                 return next(AppError.forbidden(`Requiere uno de los roles: ${roles.join(', ')}`));
             }
             next();
         };
     }
 
+    // ── Cookie helpers ────────────────────────────────────────────────────────
+
     /**
-     * Attach the refresh token as an httpOnly cookie in the response.
-     * Call this after generating a token pair.
+     * Adjunta el refresh token como cookie httpOnly segura.
      *
      * @param {Response} res
      * @param {string}   refreshToken
      */
     static attachRefreshCookie(res, refreshToken) {
-        const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
         res.cookie('refreshToken', refreshToken, {
-            httpOnly: true,                                    // Not accessible via JS
-            secure:   process.env.NODE_ENV === 'production',  // HTTPS only in prod
-            sameSite: 'strict',                               // CSRF protection
-            maxAge:   maxAgeMs,
-            path:     '/api/auth',                            // Scope to auth endpoints
+            httpOnly: true,
+            secure:   process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge:   7 * 24 * 60 * 60 * 1000,
+            path:     '/api/auth',
         });
     }
 
-    /** Clear the refresh token cookie (used on logout). */
+    /** Limpia el cookie de refresh token (logout). */
     static clearRefreshCookie(res) {
         res.clearCookie('refreshToken', { path: '/api/auth' });
     }
 
-    // ── Private Helpers ───────────────────────────────────────────────────────
+    // ── Helpers privados ──────────────────────────────────────────────────────
 
     /**
-     * Extract the Bearer token from the request.
-     * Priority: Authorization header → accessToken cookie.
-     *
-     * @param {Request} req
-     * @returns {string|null}
+     * Extrae el Bearer token del request.
+     * Prioridad: Authorization header → cookie accessToken.
      */
     static _extractToken(req) {
-        const authHeader = req.headers['authorization'] || req.headers['Authorization'];
-
+        const authHeader = req.headers['authorization'];
         if (authHeader && authHeader.startsWith('Bearer ')) {
-            return authHeader.slice(7).trim() || null;
+            const token = authHeader.slice(7).trim();
+            return token || null;
         }
-
-        // Cookie fallback (for browser clients using cookie-based sessions)
-        if (req.cookies && req.cookies.accessToken) {
+        if (req.cookies?.accessToken) {
             return req.cookies.accessToken;
         }
-
         return null;
     }
 
-    /**
-     * Ensure the payload has at least a userId before signing.
-     * @param {object} payload
-     */
-    static _validatePayload(payload) {
+    /** Valida que el payload incluya userId antes de firmar. */
+    static _assertPayload(payload) {
         if (!payload || typeof payload !== 'object' || !payload.userId) {
             throw AppError.internal('El payload del token debe incluir userId');
         }

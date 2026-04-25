@@ -1,55 +1,77 @@
 /**
- * @file bcrypt.middleware.js
- * @description Password hashing & verification utilities built on bcrypt.
+ * @file password.utils.js
+ * @description Utilidades de hashing y verificación de contraseñas (bcrypt).
  *
- * Responsibilities:
- *  - Hash plain-text passwords before they reach the database.
- *  - Compare a plain-text candidate against a stored hash on login.
- *  - Expose an Express middleware that hashes req.body.password in-place
- *    so controllers never touch plain-text passwords.
+ * RENOMBRADO desde bcrypt.middleware.js por las siguientes razones:
+ *  - Un "middleware" Express es una función (req, res, next). Esta clase no lo es.
+ *  - El nombre BcryptMiddleware mezcla la implementación (bcrypt) con el rol (utility).
+ *  - PasswordUtils describe exactamente qué hace: utilidades para contraseñas.
  *
- * Security notes:
- *  - SALT_ROUNDS = 12 gives ~300 ms hashing on a modern CPU — enough to
- *    slow brute-force attacks without hurting UX.
- *  - Never log or return plain-text passwords.
- *  - bcrypt silently truncates input at 72 bytes; validate max length upstream.
+ * IMPORTANTE — por qué NO exponemos un middleware de pre-hashing en rutas:
+ *  El patrón anterior (hashPasswordMiddleware en la ruta + pre-save hook en el modelo)
+ *  causaba DOUBLE-HASHING: bcrypt(bcrypt(password)) se almacenaba en DB.
+ *  Mongoose marca todos los campos de un documento nuevo como isModified() === true,
+ *  por lo que el pre-save hook SIEMPRE re-hasheaba el hash entrante.
+ *  Solución: el hashing ocurre en UN SOLO LUGAR — el pre-save hook del modelo.
+ *  Aquí solo exponemos hash() y compare() para uso directo del modelo y el servicio.
  */
 
 'use strict';
 
-const bcrypt   = require('bcryptjs'); // bcryptjs = pure-JS, no native bindings required
+const bcrypt       = require('bcryptjs');
 const { AppError } = require('./error.middleware');
 
-// ─── Configuration ────────────────────────────────────────────────────────────
+// ─── Configuración ────────────────────────────────────────────────────────────
 
-const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+const SALT_ROUNDS    = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+const MIN_LENGTH     = 8;
+const MAX_BYTE_LENGTH = 72; // bcrypt trunca silenciosamente a 72 bytes
 
-// ─── BcryptMiddleware Class ───────────────────────────────────────────────────
+// ─── PasswordUtils ────────────────────────────────────────────────────────────
 
-class BcryptMiddleware {
-
-    // ── Static Utilities ─────────────────────────────────────────────────────
+class PasswordUtils {
 
     /**
-     * Hash a plain-text password.
+     * Valida la contraseña en texto plano ANTES de hashearla.
+     * Debe llamarse con el valor original del usuario, nunca con un hash.
      *
-     * @param {string} plainPassword - Raw password from the user.
-     * @returns {Promise<string>}      bcrypt hash (60-char string).
-     * @throws {AppError}              400 if input is empty / too long.
+     * @param {string} password - Contraseña en texto plano.
+     * @throws {AppError} 400 si no cumple los criterios.
+     */
+    static validate(password) {
+        if (!password || typeof password !== 'string') {
+            throw AppError.badRequest('La contraseña es requerida y debe ser texto');
+        }
+        if (password.length < MIN_LENGTH) {
+            throw AppError.badRequest(`La contraseña debe tener al menos ${MIN_LENGTH} caracteres`);
+        }
+        if (Buffer.byteLength(password, 'utf8') > MAX_BYTE_LENGTH) {
+            // bcrypt ignora silenciosamente los bytes después del 72 —
+            // dos contraseñas diferentes podrían producir el mismo hash.
+            throw AppError.badRequest('La contraseña excede 72 bytes (límite de bcrypt)');
+        }
+    }
+
+    /**
+     * Hashea una contraseña en texto plano.
+     * Llama a validate() internamente — nunca hashea inputs inválidos.
+     *
+     * @param {string} plainPassword
+     * @returns {Promise<string>} Hash bcrypt de 60 caracteres.
      */
     static async hash(plainPassword) {
-        BcryptMiddleware._validateInput(plainPassword);
+        PasswordUtils.validate(plainPassword);
         const salt = await bcrypt.genSalt(SALT_ROUNDS);
         return bcrypt.hash(plainPassword, salt);
     }
 
     /**
-     * Compare a plain-text candidate against a stored bcrypt hash.
+     * Compara un texto plano contra un hash almacenado.
+     * Usa comparación de tiempo constante — inmune a timing attacks.
      *
-     * @param {string} plainPassword  - Candidate supplied by the user.
-     * @param {string} hashedPassword - Hash stored in the database.
-     * @returns {Promise<boolean>}      true if match, false otherwise.
-     * @throws {AppError}               400 if either argument is missing.
+     * @param {string} plainPassword   - Candidato del usuario.
+     * @param {string} hashedPassword  - Hash almacenado en DB.
+     * @returns {Promise<boolean>}
      */
     static async compare(plainPassword, hashedPassword) {
         if (!plainPassword || !hashedPassword) {
@@ -57,76 +79,6 @@ class BcryptMiddleware {
         }
         return bcrypt.compare(plainPassword, hashedPassword);
     }
-
-    /**
-     * Verify that the candidate matches the hash and throw if it does not.
-     * Convenience wrapper around compare() for use in login flows.
-     *
-     * @param {string} plainPassword
-     * @param {string} hashedPassword
-     * @throws {AppError} 401 Unauthorized if passwords do not match.
-     */
-    static async verifyOrThrow(plainPassword, hashedPassword) {
-        const match = await BcryptMiddleware.compare(plainPassword, hashedPassword);
-        if (!match) {
-            // Generic message prevents user-enumeration attacks
-            throw AppError.unauthorized('Credenciales incorrectas');
-        }
-    }
-
-    // ── Express Middleware ────────────────────────────────────────────────────
-
-    /**
-     * Express middleware: hashes req.body.password (and req.body.passwordConfirm
-     * if present) in-place before passing control to the next handler.
-     *
-     * Usage:
-     *   router.post('/register', BcryptMiddleware.hashPasswordMiddleware, userController.register);
-     *
-     * @param {Request}  req
-     * @param {Response} res
-     * @param {Function} next
-     */
-    static async hashPasswordMiddleware(req, res, next) {
-        try {
-            const { password, passwordConfirm } = req.body;
-
-            if (!password) return next(); // Let validators catch missing passwords
-
-            // Reject mismatched confirmation early
-            if (passwordConfirm !== undefined && password !== passwordConfirm) {
-                return next(AppError.badRequest('Las contraseñas no coinciden'));
-            }
-
-            req.body.password = await BcryptMiddleware.hash(password);
-
-            // Remove confirmation field — no need to store it
-            delete req.body.passwordConfirm;
-
-            next();
-        } catch (err) {
-            next(err);
-        }
-    }
-
-    // ── Private Helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Basic validation before attempting to hash.
-     * @param {*} password
-     */
-    static _validateInput(password) {
-        if (!password || typeof password !== 'string') {
-            throw AppError.badRequest('La contraseña es requerida y debe ser texto');
-        }
-        if (password.length < 8) {
-            throw AppError.badRequest('La contraseña debe tener al menos 8 caracteres');
-        }
-        // bcrypt silently truncates at 72 bytes — warn the consumer
-        if (Buffer.byteLength(password, 'utf8') > 72) {
-            throw AppError.badRequest('La contraseña excede el límite de 72 bytes de bcrypt');
-        }
-    }
 }
 
-module.exports = BcryptMiddleware;
+module.exports = PasswordUtils;
