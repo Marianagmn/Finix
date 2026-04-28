@@ -27,24 +27,13 @@
 
 'use strict';
 
-const jwt          = require('jsonwebtoken');
+// FIX [C-04]: Delegar operaciones JWT a JwtUtils — misma API pública, sin circular dep.
+const JwtUtils     = require('../utils/jwt.utils');
 const { AppError } = require('./error.middleware');
 const redisService = require('../services/redis.service');
 
-// ─── Configuración ────────────────────────────────────────────────────────────
-
-const ACCESS_SECRET   = process.env.JWT_SECRET;
-const REFRESH_SECRET  = process.env.JWT_REFRESH_SECRET;
-const ACCESS_EXPIRES  = process.env.JWT_EXPIRES_IN      || '15m';
-const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
-
-// Validación en tiempo de arranque — el proceso no debe iniciar sin secrets configurados
-if (!ACCESS_SECRET || !REFRESH_SECRET) {
-    throw new Error(
-        '[auth.middleware] JWT_SECRET y JWT_REFRESH_SECRET son obligatorios. ' +
-        'Verifica tus variables de entorno.'
-    );
-}
+// ─── AuthMiddleware ───────────────────────────────────────────────────────────
+// La sección de configuración JWT (secrets, validation) se movió a jwt.utils.js.
 
 // ─── AuthMiddleware ───────────────────────────────────────────────────────────
 
@@ -156,41 +145,47 @@ class AuthMiddleware {
      * Usage:
      *   router.get('/profile', AuthMiddleware.protect, controller.getProfile);
      */
-    static protect(req, res, next) {
-        const token = AuthMiddleware._extractToken(req);
-
-        if (!token) {
-            return next(AppError.unauthorized('No se proporcionó token de autenticación'));
-        }
-
-        let decoded;
+    // FIX [C-05 / M-03]: protect() ahora es async y verifica Redis blacklist.
+    // Los tokens con jti en la blacklist son rechazados inmediatamente,
+    // incluso si la firma JWT sigue siendo válida (tokens robados / logout forzado).
+    static async protect(req, res, next) {
         try {
-            decoded = AuthMiddleware.verifyAccessToken(token);
+            const token = AuthMiddleware._extractToken(req);
+            if (!token) {
+                return next(AppError.unauthorized('No se proporcionó token de autenticación'));
+            }
+
+            const decoded = JwtUtils.verifyAccessToken(token);
+
+            // FIX [C-05]: Verificar blacklist Redis si el token tiene jti
+            if (decoded.jti) {
+                const blacklisted = await redisService.isTokenBlacklisted(decoded.jti);
+                if (blacklisted) {
+                    return next(AppError.unauthorized('Token revocado. Por favor inicia sesión nuevamente.'));
+                }
+            }
+
+            // Carga lazy del User model para evitar circular dependency al importar
+            const User = require('../models/User');
+
+            const user = await User.findById(decoded.userId).select('+passwordChangedAt');
+
+            if (!user || !user.isActive) {
+                return next(AppError.unauthorized('Usuario no válido o inactivo'));
+            }
+
+            // Verificar que el token no es anterior al cambio de contraseña
+            if (!user.isTokenValidAfterPasswordChange(decoded.iat)) {
+                return next(AppError.unauthorized(
+                    'La contraseña fue cambiada. Por favor inicia sesión nuevamente.'
+                ));
+            }
+
+            req.user = decoded;
+            next();
         } catch (err) {
-            return next(err);
+            next(err);
         }
-
-        // Carga lazy del User model para evitar circular dependency al importar
-        const User = require('../models/User');
-
-        User.findById(decoded.userId)
-            .select('+passwordChangedAt')
-            .then(user => {
-                if (!user || !user.isActive) {
-                    return next(AppError.unauthorized('Usuario no válido o inactivo'));
-                }
-
-                // FIX [BUG-04]: Verificar que el token no es anterior al cambio de contraseña
-                if (!user.isTokenValidAfterPasswordChange(decoded.iat)) {
-                    return next(AppError.unauthorized(
-                        'La contraseña fue cambiada. Por favor inicia sesión nuevamente.'
-                    ));
-                }
-
-                req.user = decoded;
-                next();
-            })
-            .catch(next);
     }
 
     /**

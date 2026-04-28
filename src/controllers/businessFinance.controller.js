@@ -47,18 +47,20 @@ async function list(req, res, next) {
     try {
         if (!validateBusinessId(req, res)) return;
 
-        const pagination = Pagination.parse(req.query);
-        const sort       = Pagination.parseSort(req.query,
-            ['fecha', 'monto', 'createdAt', 'estado'],
-            '-fecha'
-        );
+        // FIX [C-01]: Pagination.parse/parseSort/meta no existen.
+        // La API correcta es Pagination.offset() que retorna {skip, limit, sort, buildMeta()}.
+        const pager = Pagination.offset(req.query, {
+            allowedSortFields: ['fecha', 'monto', 'createdAt', 'estado'],
+            defaultSort: '-fecha',
+        });
+
         const { items, total } = await BusinessFinanceService.list(
             req.user.businessId,
             req.query,
-            pagination,
-            sort
+            { skip: pager.skip, limit: pager.limit },
+            pager.sort
         );
-        ApiResponse.paginated(res, items, Pagination.meta(total, pagination.page, pagination.limit));
+        ApiResponse.paginated(res, items, pager.buildMeta(total));
     } catch (err) { next(err); }
 }
 
@@ -198,11 +200,12 @@ async function getPendingApprovals(req, res, next) {
     try {
         if (!validateBusinessId(req, res)) return;
 
-        const pagination = Pagination.parse(req.query);
+        // FIX [C-01]
+        const pager = Pagination.offset(req.query);
         const { items, total } = await BusinessFinanceService.getPendingApprovals(
-            req.user.businessId, req.user.userId, pagination
+            req.user.businessId, req.user.userId, { skip: pager.skip, limit: pager.limit }
         );
-        ApiResponse.paginated(res, items, Pagination.meta(total, pagination.page, pagination.limit));
+        ApiResponse.paginated(res, items, pager.buildMeta(total));
     } catch (err) { next(err); }
 }
 
@@ -210,12 +213,12 @@ async function getOverdue(req, res, next) {
     try {
         if (!validateBusinessId(req, res)) return;
 
-        const tipo = req.params.tipo; // 'cobrar' | 'pagar'
-        const pagination = Pagination.parse(req.query);
+        const tipo  = req.params.tipo; // 'cobrar' | 'pagar'
+        const pager = Pagination.offset(req.query); // FIX [C-01]
         const { items, total } = await BusinessFinanceService.getOverdue(
-            req.user.businessId, tipo, pagination
+            req.user.businessId, tipo, { skip: pager.skip, limit: pager.limit }
         );
-        ApiResponse.paginated(res, items, Pagination.meta(total, pagination.page, pagination.limit));
+        ApiResponse.paginated(res, items, pager.buildMeta(total));
     } catch (err) { next(err); }
 }
 

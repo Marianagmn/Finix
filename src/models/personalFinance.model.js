@@ -9,20 +9,20 @@ const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
 
-// Transaction type constants
-const TIPOS = ['ingreso', 'gasto', 'transferencia'];
-// Transaction status constants
-const ESTADOS = ['pendiente', 'completado', 'cancelado'];
-// Payment method constants (granular for analytics)
-const METODOS_PAGO = [
-    'efectivo',
-    'tarjeta_credito',
-    'tarjeta_debito',
-    'transferencia_bancaria',
-    'wallet'
-];
-// Supported currencies (expandable)
-const MONEDAS = ['COP', 'USD', 'EUR'];
+// FIX [C-03]: Usar fuente única de verdad — transaction.constants.js
+// Antes: enums hardcodeados localmente, desincronizados del sistema
+const {
+    TIPOS_BASE_ARRAY,
+    ESTADOS_PERSONALES_ARRAY,
+    METODOS_PAGO,
+    MONEDAS,
+} = require('../constants/transaction.constants');
+
+// Alias locales para claridad
+const TIPOS       = TIPOS_BASE_ARRAY;         // ['ingreso', 'gasto', 'transferencia']
+const ESTADOS     = ESTADOS_PERSONALES_ARRAY; // ['pendiente', 'completado', 'cancelado']
+const METODOS     = Object.values(METODOS_PAGO);
+const MONEDAS_ARR = Object.values(MONEDAS);
 
 const personalFinanceSchema = new Schema({
     // Transaction owner reference
@@ -51,7 +51,7 @@ const personalFinanceSchema = new Schema({
 
     moneda: {
         type: String,
-        enum: MONEDAS,
+        enum: MONEDAS_ARR,
         default: 'COP'
     },
 
@@ -89,7 +89,7 @@ const personalFinanceSchema = new Schema({
 
     metodoPago: {
         type: String,
-        enum: METODOS_PAGO,
+        enum: METODOS,
         default: 'efectivo'
     },
 

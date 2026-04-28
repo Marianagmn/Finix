@@ -2,10 +2,17 @@
  * Category Model
  * Transaction classification system per user
  * Enforces unique category names per user for consistent reporting
+ *
+ * FIX [C-02]: Aplicado softDelete.plugin en lugar de implementación manual.
+ *
  * @module models/Category
  */
+
+'use strict';
+
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const softDeletePlugin = require('../plugins/softDelete.plugin');
 
 const categorySchema = new Schema({
     // Reference to category owner (categories are user-specific)
@@ -39,44 +46,16 @@ const categorySchema = new Schema({
     isDefault: {
         type: Boolean,
         default: false
-    },
-
-    // Soft delete - preserves historical transaction references
-    isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true
-    },
-
-    deletedAt: {
-        type: Date
     }
 
 }, { timestamps: true });
 
+// ─── Indexes ─────────────────────────────────────────────────────────────────
+
 // Enforce unique category names per user (case-insensitive via lowercase)
 categorySchema.index({ userId: 1, nombre: 1 }, { unique: true });
 
-categorySchema.methods.softDelete = function () {
-    this.isDeleted = true;
-    this.deletedAt = new Date();
-    return this.save();
-};
-
-// Soft delete middleware - auto-exclude deleted categories from queries
-categorySchema.pre(/^find/, function(next) {
-    this.where({ isDeleted: false });
-    next();
-});
-
-categorySchema.pre('aggregate', function(next) {
-    const pipeline = this.pipeline();
-    if (pipeline.length && pipeline[0].$geoNear) {
-        pipeline.splice(1, 0, { $match: { isDeleted: false } });
-    } else {
-        pipeline.unshift({ $match: { isDeleted: false } });
-    }
-    next();
-});
+// ─── Plugin (C-02 FIX) ────────────────────────────────────────────────────────
+categorySchema.plugin(softDeletePlugin);
 
 module.exports = mongoose.model('Category', categorySchema);

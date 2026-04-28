@@ -15,7 +15,7 @@
 
 'use strict';
 
-const Pagination              = require('./pagination.utils');
+const Pagination              = require('../utils/pagination.utils');
 const { SortParser, FilterParser } = Pagination;
 
 // ─── SortParser ───────────────────────────────────────────────────────────────

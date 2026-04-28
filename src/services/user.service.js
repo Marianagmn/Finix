@@ -67,7 +67,21 @@ class UserService {
             User.countDocuments(query),
         ]);
 
-        return { items: items.map(u => u.toJSON()), total };
+        // FIX [I-07]: lean() retorna POJOs — NO tienen .toJSON().
+        // Aplicar la misma allowlist que el transform de toJSON del schema.
+        const serialize = (u) => ({
+            id:              u._id,
+            name:            u.name,
+            email:           u.email,
+            roles:           u.roles,
+            provider:        u.provider,
+            isActive:        u.isActive,
+            isEmailVerified: u.isEmailVerified,
+            lastLoginAt:     u.lastLoginAt,
+            createdAt:       u.createdAt,
+        });
+
+        return { items: items.map(serialize), total };
     }
 
     /**

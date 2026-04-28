@@ -30,11 +30,16 @@
 const mongoose       = require('mongoose');
 const { Schema }     = mongoose;
 const PasswordUtils  = require('../utils/password.utils');
-const AuthMiddleware = require('../middlewares/auth.middleware');
+// FIX [C-04]: Usar JwtUtils en lugar de AuthMiddleware para romper dependencia circular.
+// Antes: User.js → AuthMiddleware → (lazy) User.js
+// Ahora: User.js → JwtUtils (sin circular)
+const JwtUtils       = require('../utils/jwt.utils');
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const ROLES     = ['user', 'admin', 'superadmin'];
+// FIX [M-05]: Agregar roles aprobador y contador — requeridos en businessFinance.routes.js
+// Sin esto, AuthMiddleware.requireRole('aprobador','contador') siempre devuelve 403.
+const ROLES     = ['user', 'admin', 'superadmin', 'aprobador', 'contador'];
 const PROVIDERS = ['local', 'google', 'github'];
 
 const MAX_LOGIN_ATTEMPTS = parseInt(process.env.MAX_LOGIN_ATTEMPTS, 10) || 5;
@@ -279,7 +284,8 @@ userSchema.methods.comparePassword = function (plainPassword) {
  * El payload solo incluye lo estrictamente necesario — nunca campos sensibles.
  */
 userSchema.methods.generateTokenPair = function () {
-    return AuthMiddleware.generateTokenPair({
+    // FIX [C-04]: Delegado a JwtUtils — sin dependencia circular.
+    return JwtUtils.generateTokenPair({
         userId: this._id.toString(),
         email:  this.email,
         roles:  this.roles,

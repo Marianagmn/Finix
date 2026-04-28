@@ -40,7 +40,7 @@ const TIPOS = {
 };
 
 /**
- * Estados de transacción
+ * Estados de transacción (empresarial completo)
  */
 const ESTADOS = {
     BORRADOR: 'borrador',
@@ -50,6 +50,15 @@ const ESTADOS = {
     CONTABILIZADO: 'contabilizado',
     COMPLETADO: 'completado',
     REVERTIDO: 'revertido'
+};
+
+/**
+ * Estados de transacción para finanzas personales (subconjunto simplificado)
+ */
+const ESTADOS_PERSONALES = {
+    PENDIENTE:  'pendiente',
+    COMPLETADO: 'completado',
+    CANCELADO:  'cancelado'
 };
 
 /**
@@ -147,6 +156,11 @@ const TIPOS_ARRAY = Object.values(TIPOS);
  */
 const ESTADOS_ARRAY = Object.values(ESTADOS);
 
+/**
+ * Array de estados personales para validaciones Mongoose
+ */
+const ESTADOS_PERSONALES_ARRAY = Object.values(ESTADOS_PERSONALES);
+
 module.exports = {
     TIPOS,
     TIPOS_BASE,
@@ -155,6 +169,8 @@ module.exports = {
     TIPOS_ARRAY,
     ESTADOS,
     ESTADOS_ARRAY,
+    ESTADOS_PERSONALES,
+    ESTADOS_PERSONALES_ARRAY,
     METODOS_PAGO,
     MONEDAS,
     CLASIFICACION_GASTOS,

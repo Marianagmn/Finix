@@ -13,9 +13,11 @@
 
 'use strict';
 
+const mongoose       = require('mongoose');
 const BusinessFinance = require('../models/businessFinance.model');
-const { AppError }    = require('../middlewares/error.middleware');
-const Pagination      = require('../utils/pagination.utils');
+const { AppError }   = require('../middlewares/error.middleware');
+const Pagination     = require('../utils/pagination.utils');
+const { normalizeAmounts, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,14 +29,9 @@ const Pagination      = require('../utils/pagination.utils');
  */
 const normalizeAmounts = (items) => {
     if (!Array.isArray(items)) return items;
-    return items.map(item => ({
-        ...item,
-        monto: item.monto / 100,
-        saldoPendiente: item.saldoPendiente / 100,
-        totalImpuestos: item.totalImpuestos / 100,
-        montoNeto: item.montoNeto / 100,
-        montoCOP: item.montoCOP / 100
-    }));
+    // FIX [I-02]: Delegado a money.utils para evitar duplicar la lógica
+    const { normalizeAmounts: norm, BUSINESS_FINANCE_MONEY_FIELDS: FIELDS } = require('../utils/money.utils');
+    return norm(items, FIELDS);
 };
 
 // Campos que se permiten actualizar en un borrador
@@ -314,18 +311,23 @@ class BusinessFinanceService {
             throw AppError.badRequest('No se puede revertir un reverso');
         }
 
-        // generarReverso() retorna el documento SIN guardar
         const reverso = txn.generarReverso(userId, motivo);
         reverso.updatedBy = userId;
 
-        // Guardar reverso y anular original de forma atómica (en la misma sesión idealmente)
-        // TODO: envolver en session de MongoDB para atomicidad completa
-        await reverso.save();
-
-        txn.estado          = 'anulado';
-        txn.motivoAnulacion = motivo;
-        txn.updatedBy       = userId;
-        await txn.save();
+        // FIX [M-02]: Envolver en session MongoDB para atomicidad completa.
+        // Si el proceso muere entre los dos saves, la DB NO queda inconsistente.
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                await reverso.save({ session });
+                txn.estado          = 'anulado';
+                txn.motivoAnulacion = motivo;
+                txn.updatedBy       = userId;
+                await txn.save({ session });
+            });
+        } finally {
+            await session.endSession();
+        }
 
         return reverso.toObject();
     }

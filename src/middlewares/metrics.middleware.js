@@ -80,8 +80,12 @@ const getMetrics = (req, res) => {
         ? metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length
         : 0;
 
-    const p95ResponseTime = metrics.responseTimes.length > 0
-        ? metrics.responseTimes.sort((a, b) => a - b)[Math.floor(metrics.responseTimes.length * 0.95)]
+    // FIX [I-06]: [...arr].sort() para no mutar el array original.
+    // metrics.responseTimes.sort() muta en-place — corrompe el orden cronológico
+    // y el cálculo del avg en la siguiente llamada.
+    const sorted = [...metrics.responseTimes].sort((a, b) => a - b);
+    const p95ResponseTime = sorted.length > 0
+        ? sorted[Math.floor(sorted.length * 0.95)]
         : 0;
 
     res.json({

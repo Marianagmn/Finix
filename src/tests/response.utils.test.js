@@ -10,7 +10,7 @@
 
 'use strict';
 
-const ApiResponse = require('./response.utils');
+const ApiResponse = require('../utils/response.utils');
 
 // Mock de res para no necesitar Express
 function mockRes() {
