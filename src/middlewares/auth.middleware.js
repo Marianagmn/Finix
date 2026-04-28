@@ -29,6 +29,7 @@
 
 const jwt          = require('jsonwebtoken');
 const { AppError } = require('./error.middleware');
+const redisService = require('../services/redis.service');
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
@@ -170,7 +171,7 @@ class AuthMiddleware {
         }
 
         // Carga lazy del User model para evitar circular dependency al importar
-        const User = require('./user');
+        const User = require('../models/User');
 
         User.findById(decoded.userId)
             .select('+passwordChangedAt')

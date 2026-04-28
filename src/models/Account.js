@@ -67,6 +67,9 @@ const accountSchema = new Schema({
 });
 
 accountSchema.index({ userId: 1, nombre: 1 });
+accountSchema.index({ userId: 1, tipo: 1 });
+accountSchema.index({ userId: 1, isActive: 1 });
+accountSchema.index({ userId: 1, tipo: 1, isActive: 1 });
 
 accountSchema.methods.softDelete = function () {
     this.isDeleted = true;

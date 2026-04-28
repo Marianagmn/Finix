@@ -19,6 +19,14 @@
 const { z }        = require('zod');
 const { AppError } = require('./error.middleware');
 
+// Importar constantes para enums
+const {
+    TIPOS_BASE_ARRAY,
+    ESTADOS,
+    METODOS_PAGO,
+    MONEDAS
+} = require('../constants/transaction.constants');
+
 // ─── Schemas de validación ────────────────────────────────────────────────────
 
 /**
@@ -59,6 +67,41 @@ const loginSchema = z.object({
                .trim(),
     password: z.string({ required_error: 'La contraseña es requerida' })
                .min(1, 'La contraseña no puede estar vacía'),
+}).strip();
+
+// ─── Schemas de Finanzas Personales ───────────────────────────────────────────
+
+/** Schema para crear transacción personal */
+const createPersonalFinanceSchema = z.object({
+    tipo: z.enum(TIPOS_BASE_ARRAY, { required_error: 'Tipo de transacción requerido' }),
+    monto: z.number({ required_error: 'Monto requerido' }).positive('El monto debe ser positivo'),
+    moneda: z.enum(Object.values(MONEDAS)).default('COP'),
+    tasaCambio: z.number().positive().optional(),
+    categoria: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de categoría inválido').optional(),
+    cuentaOrigenId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de cuenta inválido').optional(),
+    cuentaDestinoId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de cuenta inválido').optional(),
+    metodoPago: z.enum(Object.values(METODOS_PAGO)).default('efectivo'),
+    descripcion: z.string().trim().max(500).optional(),
+    fecha: z.string().datetime().or(z.date()).optional(),
+    estado: z.enum(Object.values(ESTADOS)).default('completado'),
+    esAhorro: z.boolean().default(false),
+    tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
+    esTransferenciaInterna: z.boolean().default(false),
+    transferenciaId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+}).strip();
+
+/** Schema para actualizar transacción personal */
+const updatePersonalFinanceSchema = createPersonalFinanceSchema.partial();
+
+/** Schema de query params para paginación/filtros */
+const financeQuerySchema = z.object({
+    page: z.string().or(z.number()).transform(v => parseInt(v)).default('1'),
+    limit: z.string().or(z.number()).transform(v => parseInt(v)).default('20'),
+    sort: z.string().optional(),
+    tipo: z.enum(TIPOS_BASE_ARRAY).optional(),
+    estado: z.enum(Object.values(ESTADOS)).optional(),
+    fechaDesde: z.string().datetime().optional(),
+    fechaHasta: z.string().datetime().optional(),
 }).strip();
 
 // ─── Middleware factory ───────────────────────────────────────────────────────
@@ -109,5 +152,10 @@ module.exports = {
         register: registerSchema,
         login:    loginSchema,
         password: passwordSchema,
+        personalFinance: {
+            create: createPersonalFinanceSchema,
+            update: updatePersonalFinanceSchema,
+            query:  financeQuerySchema,
+        },
     },
 };

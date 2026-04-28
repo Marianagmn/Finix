@@ -29,8 +29,8 @@
 
 const mongoose       = require('mongoose');
 const { Schema }     = mongoose;
-const PasswordUtils  = require('./password.utils');
-const AuthMiddleware = require('./auth.middleware');
+const PasswordUtils  = require('../utils/password.utils');
+const AuthMiddleware = require('../middlewares/auth.middleware');
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 

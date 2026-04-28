@@ -13,9 +13,29 @@
 
 'use strict';
 
-const BusinessFinance = require('./BusinessFinance');
-const { AppError }    = require('./error.middleware');
-const Pagination      = require('./pagination.utils');
+const BusinessFinance = require('../models/businessFinance.model');
+const { AppError }    = require('../middlewares/error.middleware');
+const Pagination      = require('../utils/pagination.utils');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Normaliza montos desde centavos a moneda real
+ * El modelo almacena en centavos (set: v => v * 100) pero lean() no aplica getters
+ * @param {Array} items - Items desde lean()
+ * @returns {Array} Items con montos normalizados
+ */
+const normalizeAmounts = (items) => {
+    if (!Array.isArray(items)) return items;
+    return items.map(item => ({
+        ...item,
+        monto: item.monto / 100,
+        saldoPendiente: item.saldoPendiente / 100,
+        totalImpuestos: item.totalImpuestos / 100,
+        montoNeto: item.montoNeto / 100,
+        montoCOP: item.montoCOP / 100
+    }));
+};
 
 // Campos que se permiten actualizar en un borrador
 const UPDATABLE_FIELDS = [
@@ -99,7 +119,8 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        return { items, total };
+        // FIX: Normalizar montos de centavos a moneda real
+        return { items: normalizeAmounts(items), total };
     }
 
     /**
@@ -390,7 +411,8 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        return { items, total };
+        // FIX: Normalizar montos de centavos a moneda real
+        return { items: normalizeAmounts(items), total };
     }
 
     /**
@@ -422,7 +444,8 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        return { items, total };
+        // FIX: Normalizar montos de centavos a moneda real
+        return { items: normalizeAmounts(items), total };
     }
 }
 

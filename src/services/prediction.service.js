@@ -4,25 +4,9 @@
  * @module services/prediction.service
  */
 
-const TIPOS = {
-    INGRESO: 'ingreso',
-    GASTO: 'gasto',
-    TRANSFERENCIA: 'transferencia'
-};
-
-const ESTADOS = {
-    COMPLETADO: 'completado'
-};
-
-/**
- * Normalizes category strings consistently across all services
- * @param {*} cat - Raw category value
- * @returns {string} Normalized category
- */
-const normalizarCategoria = (cat) => {
-    if (!cat) return 'sin_categoria';
-    return cat.toString().toLowerCase().trim().replace(/\s+/g, '_') || 'sin_categoria';
-};
+const { TIPOS, ESTADOS } = require('../constants/transaction.constants');
+const { normalizarCategoria } = require('../utils/category.utils');
+const { esGastoValido, extraerMonto, extraerFecha } = require('../utils/filter.utils');
 
 /**
  * Calculates linear regression slope using REAL TIME (timestamps)

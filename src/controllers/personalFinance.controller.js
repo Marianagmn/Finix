@@ -10,6 +10,8 @@ const Category = require('../models/Category');
 const predictionService = require('../services/prediction.service');
 const simulationService = require('../services/simulation.service');
 const analysisService = require('../services/financeAnalysis.service');
+const ApiResponse = require('../utils/response.utils');
+const Pagination = require('../utils/pagination.utils');
 
 /**
  * Maneja errores estandarizados para todas las respuestas
@@ -19,15 +21,14 @@ const analysisService = require('../services/financeAnalysis.service');
  */
 const handleError = (res, error) => {
     if (error.name === 'ValidationError') {
-        return res.status(400).json({ success: false, message: error.message });
+        return ApiResponse.error(res, error.message, { statusCode: 400, code: 'VALIDATION_ERROR' });
     }
     if (error.name === 'CastError') {
-        return res.status(400).json({ success: false, message: 'ID inválido' });
+        return ApiResponse.error(res, 'ID inválido', { statusCode: 400, code: 'INVALID_ID' });
     }
-    return res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor',
-        error: error.message
+    return ApiResponse.error(res, 'Error interno del servidor', {
+        statusCode: 500,
+        code: 'INTERNAL_ERROR'
     });
 };
 
@@ -110,23 +111,23 @@ exports.createFinance = async (req, res) => {
         });
 
         if (data.categoria) {
-            const category = await Category.findOne({ _id: data.categoria, userId: req.user.id });
+            const category = await Category.findOne({ _id: data.categoria, userId: req.user.userId });
             if (!category) {
-                return res.status(403).json({ success: false, message: 'Categoría no autorizada' });
+                return ApiResponse.error(res, 'Categoría no autorizada', { statusCode: 403, code: 'FORBIDDEN' });
             }
         }
 
         if (data.cuentaOrigenId) {
-            const account = await Account.findOne({ _id: data.cuentaOrigenId, userId: req.user.id });
+            const account = await Account.findOne({ _id: data.cuentaOrigenId, userId: req.user.userId });
             if (!account) {
-                return res.status(403).json({ success: false, message: 'Cuenta origen no autorizada' });
+                return ApiResponse.error(res, 'Cuenta origen no autorizada', { statusCode: 403, code: 'FORBIDDEN' });
             }
         }
 
         if (data.cuentaDestinoId) {
-            const account = await Account.findOne({ _id: data.cuentaDestinoId, userId: req.user.id });
+            const account = await Account.findOne({ _id: data.cuentaDestinoId, userId: req.user.userId });
             if (!account) {
-                return res.status(403).json({ success: false, message: 'Cuenta destino no autorizada' });
+                return ApiResponse.error(res, 'Cuenta destino no autorizada', { statusCode: 403, code: 'FORBIDDEN' });
             }
         }
 
@@ -137,23 +138,19 @@ exports.createFinance = async (req, res) => {
             unAnioAtras.setFullYear(unAnioAtras.getFullYear() - 1);
             
             if (fecha > hoy || fecha < unAnioAtras) {
-                return res.status(400).json({ success: false, message: 'Fecha fuera de rango válido (máx 1 año atrás)' });
+                return ApiResponse.error(res, 'Fecha fuera de rango válido (máx 1 año atrás)', { statusCode: 400, code: 'INVALID_DATE' });
             }
         }
 
         const newFinance = new PersonalFinance({
             ...data,
-            userId: req.user.id,
-            createdBy: req.user.id
+            userId: req.user.userId,
+            createdBy: req.user.userId
         });
 
         const saved = await newFinance.save();
 
-        res.status(201).json({
-            success: true,
-            message: 'Registro creado correctamente',
-            data: saved.toObject()
-        });
+        return ApiResponse.created(res, saved.toObject(), 'Registro creado correctamente');
 
     } catch (error) {
         handleError(res, error);
@@ -169,32 +166,22 @@ exports.createFinance = async (req, res) => {
  */
 exports.getAllFinances = async (req, res) => {
     try {
-        const { page = 1, limit = 20 } = req.query;
+        const pager = new Pagination.OffsetPagination(req.query, {
+            defaultLimit: 20,
+            maxLimit: 100,
+            allowedSortFields: ['fecha', 'monto', 'createdAt', 'estado'],
+            defaultSort: '-fecha'
+        });
 
-        const pageNum = Math.max(1, parseInt(page, 10) || 1);
-        const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+        const query = PersonalFinance.find({ userId: req.user.userId })
+            .select('tipo monto moneda categoria fecha estado descripcion esAhorro tags');
 
         const [finances, total] = await Promise.all([
-            PersonalFinance.find({ userId: req.user.id })
-                .sort({ fecha: -1 })
-                .skip((pageNum - 1) * limitNum)
-                .limit(limitNum)
-                .select('tipo monto moneda categoria fecha estado descripcion esAhorro tags')
-                .lean(),
-
-            PersonalFinance.countDocuments({ userId: req.user.id })
+            pager.applyTo(query).lean(),
+            PersonalFinance.countDocuments({ userId: req.user.userId })
         ]);
 
-        res.status(200).json({
-            success: true,
-            data: finances,
-            pagination: {
-                page: pageNum,
-                limit: limitNum,
-                total,
-                totalPages: Math.ceil(total / limitNum)
-            }
-        });
+        return ApiResponse.paginated(res, finances, pager.buildMeta(total));
 
     } catch (error) {
         handleError(res, error);
@@ -212,17 +199,14 @@ exports.getFinanceById = async (req, res) => {
     try {
         const finance = await PersonalFinance.findOne({
             _id: req.params.id,
-            userId: req.user.id
+            userId: req.user.userId
         }).select('tipo monto moneda categoria fecha estado descripcion esAhorro tags');
 
         if (!finance) {
-            return res.status(404).json({ success: false, message: 'Registro no encontrado' });
+            return ApiResponse.error(res, 'Registro no encontrado', { statusCode: 404, code: 'NOT_FOUND' });
         }
 
-        res.status(200).json({
-            success: true,
-            data: finance.toObject()
-        });
+        return ApiResponse.success(res, finance.toObject());
 
     } catch (error) {
         handleError(res, error);
@@ -230,7 +214,7 @@ exports.getFinanceById = async (req, res) => {
 };
 
 /**
- * Actualiza un registro financiero existente
+ * Actualiza un registro financiero existente (PUT completo)
  * Solo permite campos whitelist, valida propiedad
  * PUT /finances/:id -> 200 OK | 404 Not Found
  * @param {Request} req - Express request con params.id y body
@@ -256,11 +240,11 @@ exports.updateFinance = async (req, res) => {
         const updated = await PersonalFinance.findOneAndUpdate(
             {
                 _id: req.params.id,
-                userId: req.user.id
+                userId: req.user.userId
             },
             {
                 ...updateData,
-                updatedBy: req.user.id
+                updatedBy: req.user.userId
             },
             {
                 new: true,
@@ -269,14 +253,10 @@ exports.updateFinance = async (req, res) => {
         ).select('tipo monto moneda categoria fecha estado descripcion esAhorro tags');
 
         if (!updated) {
-            return res.status(404).json({ success: false, message: 'Registro no encontrado' });
+            return ApiResponse.error(res, 'Registro no encontrado', { statusCode: 404, code: 'NOT_FOUND' });
         }
 
-        res.status(200).json({
-            success: true,
-            message: 'Registro actualizado',
-            data: updated.toObject()
-        });
+        return ApiResponse.success(res, updated.toObject(), { message: 'Registro actualizado' });
 
     } catch (error) {
         handleError(res, error);
@@ -293,17 +273,16 @@ exports.deleteFinance = async (req, res) => {
     try {
         const finance = await PersonalFinance.findOne({
             _id: req.params.id,
-            userId: req.user.id
+            userId: req.user.userId
         });
 
         if (!finance) {
-            return res.status(404).json({ success: false, message: 'Registro no encontrado' });
+            return ApiResponse.error(res, 'Registro no encontrado', { statusCode: 404, code: 'NOT_FOUND' });
         }
 
         await finance.softDelete();
 
-        // 204 No Content - estándar REST para DELETE exitoso
-        res.status(204).send();
+        return ApiResponse.noContent(res);
 
     } catch (error) {
         handleError(res, error);
@@ -320,22 +299,20 @@ exports.deleteFinance = async (req, res) => {
 exports.getAnalysis = async (req, res) => {
     try {
         
-        const limitCheck = await checkAnalyticsLimit(req.user.id);
+        const limitCheck = await checkAnalyticsLimit(req.user.userId);
         if (limitCheck.exceeded) {
-            return res.status(429).json({ 
-                success: false, 
-                message: 'Demasiados registros para análisis. Máximo 10,000.' 
-            });
+            return ApiResponse.error(res, 'Demasiados registros para análisis. Máximo 10,000.', { statusCode: 429, code: 'TOO_MANY_REQUESTS' });
         }
 
-        const data = await getCompletedTransactions(req.user.id);
+        const data = await getCompletedTransactions(req.user.userId);
 
         const analysis = analysisService.analyze(data);
 
-        res.status(200).json({
-            success: true,
-            data: analysis.data || analysis
-        });
+        if (!analysis.success) {
+            return ApiResponse.error(res, analysis.message, { statusCode: 400, code: 'ANALYSIS_ERROR' });
+        }
+
+        return ApiResponse.success(res, analysis.data);
 
     } catch (error) {
         handleError(res, error);
@@ -351,23 +328,20 @@ exports.getAnalysis = async (req, res) => {
  */
 exports.getPrediction = async (req, res) => {
     try {
-        const limitCheck = await checkAnalyticsLimit(req.user.id);
+        const limitCheck = await checkAnalyticsLimit(req.user.userId);
         if (limitCheck.exceeded) {
-            return res.status(429).json({ 
-                success: false, 
-                message: 'Demasiados registros para predicción. Máximo 10,000.' 
-            });
+            return ApiResponse.error(res, 'Demasiados registros para predicción. Máximo 10,000.', { statusCode: 429, code: 'TOO_MANY_REQUESTS' });
         }
 
-        const data = await getCompletedTransactions(req.user.id);
+        const data = await getCompletedTransactions(req.user.userId);
 
         const prediction = predictionService.predict(data);
 
-        res.status(200).json({
-            success: prediction.success,
-            data: prediction.data,
-            message: prediction.message
-        });
+        if (!prediction.success) {
+            return ApiResponse.error(res, prediction.message, { statusCode: 400, code: 'PREDICTION_ERROR' });
+        }
+
+        return ApiResponse.success(res, prediction.data, { message: prediction.message });
 
     } catch (error) {
         handleError(res, error);
@@ -383,23 +357,20 @@ exports.getPrediction = async (req, res) => {
  */
 exports.getSimulation = async (req, res) => {
     try {
-        const limitCheck = await checkAnalyticsLimit(req.user.id);
+        const limitCheck = await checkAnalyticsLimit(req.user.userId);
         if (limitCheck.exceeded) {
-            return res.status(429).json({ 
-                success: false, 
-                message: 'Demasiados registros para simulación. Máximo 10,000.' 
-            });
+            return ApiResponse.error(res, 'Demasiados registros para simulación. Máximo 10,000.', { statusCode: 429, code: 'TOO_MANY_REQUESTS' });
         }
 
-        const data = await getCompletedTransactions(req.user.id);
+        const data = await getCompletedTransactions(req.user.userId);
 
         const simulation = simulationService.simulate(data);
 
-        res.status(200).json({
-            success: simulation.success,
-            data: simulation.data,
-            message: simulation.message
-        });
+        if (!simulation.success) {
+            return ApiResponse.error(res, simulation.message, { statusCode: 400, code: 'SIMULATION_ERROR' });
+        }
+
+        return ApiResponse.success(res, simulation.data, { message: simulation.message });
 
     } catch (error) {
         handleError(res, error);

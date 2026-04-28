@@ -27,7 +27,7 @@ const categorySchema = new Schema({
     // Transaction type this category applies to
     tipo: {
         type: String,
-        enum: ['ingreso', 'gasto'], 
+        enum: ['ingreso', 'gasto', 'transferencia'],
         required: true,
         index: true
     },

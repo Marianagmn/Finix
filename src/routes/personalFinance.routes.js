@@ -14,7 +14,7 @@ const logAccess = (req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
         const duration = Date.now() - start;
-        console.log(`[${new Date().toISOString()}] ${req.user.id} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+        console.log(`[${new Date().toISOString()}] ${req.user?.userId || 'anon'} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
     });
     next();
 };
@@ -26,7 +26,7 @@ const logAccess = (req, res, next) => {
 const aiLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
-    keyGenerator: (req) => req.user.id,
+    keyGenerator: (req) => req.user?.userId || req.ip,
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -42,7 +42,7 @@ const aiLimiter = rateLimit({
 const burstLimiter = rateLimit({
     windowMs: 10 * 1000,
     max: 5,
-    keyGenerator: (req) => req.user.id,
+    keyGenerator: (req) => req.user?.userId || req.ip,
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false
@@ -69,7 +69,7 @@ const validateObjectId = (...params) => (req, res, next) => {
 router.use(auth); 
 
 // --- Analytics & AI (endpoints costosos: burst + rate limit + logging)
-router.get('/analysis', logAccess, financeController.getAnalysis);
+router.get('/analysis', logAccess, burstLimiter, aiLimiter, financeController.getAnalysis);
 router.get('/prediction', logAccess, burstLimiter, aiLimiter, financeController.getPrediction);
 router.get('/simulation', logAccess, burstLimiter, aiLimiter, financeController.getSimulation);
 

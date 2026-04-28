@@ -5,27 +5,9 @@
  * @module services/financeAnalysis.service
  */
 
-// Transaction type constants
-const TIPOS = {
-    INGRESO: 'ingreso',
-    GASTO: 'gasto',
-    TRANSFERENCIA: 'transferencia'
-};
-
-// Transaction status constants
-const ESTADOS = {
-    COMPLETADO: 'completado'
-};
-
-/**
- * Normalizes category strings consistently across all services
- * @param {*} cat - Raw category value
- * @returns {string} Normalized category
- */
-const normalizarCategoria = (cat) => {
-    if (!cat) return 'sin_categoria';
-    return cat.toString().toLowerCase().trim().replace(/\s+/g, '_') || 'sin_categoria';
-};
+const { TIPOS, ESTADOS } = require('../constants/transaction.constants');
+const { normalizarCategoria } = require('../utils/category.utils');
+const { esTransaccionValida, extraerMonto } = require('../utils/filter.utils');
 
 /**
  * Validates and filters transaction data

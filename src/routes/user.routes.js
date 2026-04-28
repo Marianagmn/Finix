@@ -24,8 +24,8 @@
 'use strict';
 
 const express        = require('express');
-const AuthMiddleware = require('./auth.middleware');
-const ctrl           = require('./user.controller');
+const AuthMiddleware = require('../middlewares/auth.middleware');
+const ctrl           = require('../controllers/user.controller');
 
 const router = express.Router();
 

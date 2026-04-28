@@ -20,9 +20,9 @@
 
 'use strict';
 
-const UserService  = require('./user.service');
-const ApiResponse  = require('./response.utils');
-const Pagination   = require('./pagination.utils');
+const UserService  = require('../services/user.service');
+const ApiResponse  = require('../utils/response.utils');
+const Pagination   = require('../utils/pagination.utils');
 
 // ─── Perfil propio ────────────────────────────────────────────────────────────
 

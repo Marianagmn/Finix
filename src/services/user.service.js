@@ -12,9 +12,10 @@
 
 'use strict';
 
-const User          = require('./user');
-const PasswordUtils = require('./password.utils');
-const { AppError }  = require('./error.middleware');
+const User          = require('../models/User');
+const PasswordUtils = require('../utils/password.utils');
+const Pagination    = require('../utils/pagination.utils');
+const { AppError }  = require('../middlewares/error.middleware');
 
 // Campos que un usuario puede editar en su propio perfil
 const ALLOWED_PROFILE_FIELDS = ['name', 'email'];
@@ -62,7 +63,7 @@ class UserService {
         }
 
         const [items, total] = await Promise.all([
-            User.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }),
+            User.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
             User.countDocuments(query),
         ]);
 

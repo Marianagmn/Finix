@@ -22,9 +22,9 @@
 
 'use strict';
 
-const User           = require('./user');
-const AuthMiddleware = require('./auth.middleware');
-const { AppError }   = require('./error.middleware');
+const User           = require('../models/User');
+const AuthMiddleware = require('../middlewares/auth.middleware');
+const { AppError }   = require('../middlewares/error.middleware');
 
 class AuthService {
 
