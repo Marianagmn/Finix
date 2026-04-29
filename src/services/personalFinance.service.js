@@ -22,6 +22,10 @@ const financeAnalysisService  = require('./financeAnalysis.service');
 const predictionService       = require('./prediction.service');
 const simulationService       = require('./simulation.service');
 const AnalyticsAggregationService = require('./analytics.aggregation.service');
+const redisService            = require('./redis.service');
+
+// FIX [M-07]: TTL de caché para servicios de IA (5 minutos)
+const AI_CACHE_TTL = 300; // 5 minutos en segundos
 
 // Umbral sobre el cual se usa aggregation pipeline en vez de memoria
 const AGGREGATION_THRESHOLD = 500;
@@ -68,6 +72,7 @@ class PersonalFinanceService {
 
     /**
      * Crea una nueva transacción personal.
+     * FIX [M-09]: Invalida caché de IA después de crear.
      */
     static async create(body, userId) {
         const data = PersonalFinanceService._pick(body, ALLOWED_FIELDS);
@@ -75,6 +80,10 @@ class PersonalFinanceService {
 
         const finance = new PersonalFinance({ ...data, userId });
         const saved   = await finance.save();
+
+        // Invalidar caché de IA para este usuario
+        await PersonalFinanceService._invalidateAICache(userId);
+
         return saved.toObject();
     }
 
@@ -128,6 +137,7 @@ class PersonalFinanceService {
 
     /**
      * Actualiza una transacción existente.
+     * FIX [M-09]: Invalida caché de IA después de actualizar.
      */
     static async update(id, userId, body) {
         const data = PersonalFinanceService._pick(body, ALLOWED_FIELDS);
@@ -138,16 +148,42 @@ class PersonalFinanceService {
 
         Object.assign(finance, data);
         const updated = await finance.save();
+
+        // Invalidar caché de IA para este usuario
+        await PersonalFinanceService._invalidateAICache(userId);
+
         return updated.toObject();
     }
 
     /**
      * Soft-delete de una transacción.
+     * FIX [M-09]: Invalida caché de IA después de eliminar.
      */
     static async softDelete(id, userId) {
         const finance = await PersonalFinance.findOne({ _id: id, userId });
         if (!finance) throw AppError.notFound('Registro financiero no encontrado');
         await finance.softDelete(userId);
+
+        // Invalidar caché de IA para este usuario
+        await PersonalFinanceService._invalidateAICache(userId);
+    }
+
+    /**
+     * Invalida el caché de IA para un usuario.
+     * FIX [M-09]: Llamado después de cualquier modificación de datos.
+     * @private
+     */
+    static async _invalidateAICache(userId) {
+        try {
+            await Promise.all([
+                redisService.invalidateCache(`analysis:${userId}:*`),
+                redisService.invalidateCache(`prediction:${userId}`),
+                redisService.invalidateCache(`simulation:${userId}`),
+            ]);
+        } catch (err) {
+            // No fallar si Redis no está disponible
+            console.warn('[Cache] Error al invalidar caché:', err.message);
+        }
     }
 
     // ── Analytics / AI ────────────────────────────────────────────────────────
@@ -190,33 +226,75 @@ class PersonalFinanceService {
     /**
      * Análisis financiero: resumen de ingresos, gastos, categorías.
      * FIX [M-01]: usa aggregation para >500 registros.
+     * FIX [M-07]: caché de 5 minutos para resultados de IA.
      */
     static async getAnalysis(userId, fechaDesde = null, fechaHasta = null) {
+        const cacheKey = `analysis:${userId}:${fechaDesde || 'all'}:${fechaHasta || 'all'}`;
+
+        // Intentar recuperar del caché
+        const cached = await redisService.getCache(cacheKey);
+        if (cached) {
+            return { ...cached, fromCache: true };
+        }
+
         const data = await PersonalFinanceService._getCompletedTransactions(userId, fechaDesde, fechaHasta);
 
+        let result;
         if (data === null) {
             // Dataset grande → aggregation pipeline (más eficiente)
-            return AnalyticsAggregationService.analyzeWithAggregation(
+            result = await AnalyticsAggregationService.analyzeWithAggregation(
                 userId,
                 fechaDesde ? new Date(fechaDesde) : null,
                 fechaHasta ? new Date(fechaHasta) : null,
             );
+        } else {
+            result = financeAnalysisService.analyze(data);
         }
 
-        return financeAnalysisService.analyze(data);
+        // Guardar en caché si es exitoso
+        if (result.success) {
+            await redisService.setCache(cacheKey, result, AI_CACHE_TTL);
+        }
+
+        return result;
     }
 
     /**
      * Predicción del próximo gasto usando regresión lineal + ensemble.
+     * FIX [M-07]: caché de 5 minutos para resultados de IA.
      */
     static async getPrediction(userId) {
-        return predictionService.predict(userId);
+        const cacheKey = `prediction:${userId}`;
+
+        // Intentar recuperar del caché
+        const cached = await redisService.getCache(cacheKey);
+        if (cached) {
+            return { ...cached, fromCache: true };
+        }
+
+        const result = await predictionService.predict(userId);
+
+        // Guardar en caché si es exitoso
+        if (result.success) {
+            await redisService.setCache(cacheKey, result, AI_CACHE_TTL);
+        }
+
+        return result;
     }
 
     /**
      * Simulación financiera con escenarios y recomendaciones IA.
+     * FIX [M-07]: caché de 5 minutos para resultados de IA.
      */
     static async getSimulation(userId) {
+        const cacheKey = `simulation:${userId}`;
+
+        // Intentar recuperar del caché
+        const cached = await redisService.getCache(cacheKey);
+        if (cached) {
+            return { ...cached, fromCache: true };
+        }
+
         const data = await PersonalFinanceService._getCompletedTransactions(userId);
 
         if (data === null) {
@@ -226,7 +304,14 @@ class PersonalFinanceService {
             };
         }
 
-        return simulationService.simulate(data);
+        const result = simulationService.simulate(data);
+
+        // Guardar en caché si es exitoso
+        if (result.success) {
+            await redisService.setCache(cacheKey, result, AI_CACHE_TTL);
+        }
+
+        return result;
     }
 }
 

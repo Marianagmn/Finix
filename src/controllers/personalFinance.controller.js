@@ -96,6 +96,7 @@ exports.deleteFinance = async (req, res, next) => {
 /**
  * GET /api/finances/analysis
  * Análisis financiero: ingresos, gastos, categorías, promedios.
+ * FIX [M-08]: Incluye metadata de caché en respuesta.
  */
 exports.getAnalysis = async (req, res, next) => {
     try {
@@ -109,7 +110,10 @@ exports.getAnalysis = async (req, res, next) => {
         if (!result.success) {
             return ApiResponse.error(res, result.message, { statusCode: 422, code: 'ANALYSIS_ERROR' });
         }
-        ApiResponse.success(res, result.data);
+
+        // Incluir metadata de caché si está disponible
+        const meta = result.fromCache ? { cached: true, cacheAge: '5min max' } : {};
+        ApiResponse.success(res, result.data, { meta });
     } catch (err) {
         next(err);
     }
@@ -118,6 +122,7 @@ exports.getAnalysis = async (req, res, next) => {
 /**
  * GET /api/finances/prediction
  * Predicción del próximo gasto usando regresión lineal + modelo ensemble.
+ * FIX [M-08]: Incluye metadata de caché en respuesta.
  */
 exports.getPrediction = async (req, res, next) => {
     try {
@@ -126,7 +131,10 @@ exports.getPrediction = async (req, res, next) => {
         if (!result.success) {
             return ApiResponse.error(res, result.message, { statusCode: 422, code: 'PREDICTION_ERROR' });
         }
-        ApiResponse.success(res, result.data);
+
+        // Incluir metadata de caché si está disponible
+        const meta = result.fromCache ? { cached: true, cacheAge: '5min max' } : {};
+        ApiResponse.success(res, result.data, { meta });
     } catch (err) {
         next(err);
     }
@@ -135,6 +143,7 @@ exports.getPrediction = async (req, res, next) => {
 /**
  * GET /api/finances/simulation
  * Simulación financiera con escenarios, score y recomendaciones IA.
+ * FIX [M-08]: Incluye metadata de caché en respuesta.
  */
 exports.getSimulation = async (req, res, next) => {
     try {
@@ -143,7 +152,10 @@ exports.getSimulation = async (req, res, next) => {
         if (!result.success) {
             return ApiResponse.error(res, result.message, { statusCode: 422, code: 'SIMULATION_ERROR' });
         }
-        ApiResponse.success(res, result.data);
+
+        // Incluir metadata de caché si está disponible
+        const meta = result.fromCache ? { cached: true, cacheAge: '5min max' } : {};
+        ApiResponse.success(res, result.data, { meta });
     } catch (err) {
         next(err);
     }

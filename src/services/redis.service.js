@@ -30,11 +30,21 @@ class RedisService {
                 port: parseInt(process.env.REDIS_PORT, 10) || 6379,
                 password: process.env.REDIS_PASSWORD || undefined,
                 db: parseInt(process.env.REDIS_DB, 10) || 0,
+                // FIX [M-06]: Timeouts estrictos y circuit breaker
+                connectTimeout: 5000,           // 5s para conectar
+                commandTimeout: 3000,           // 3s por comando
+                lazyConnect: true,                // No conectar hasta primer uso
                 retryStrategy: (times) => {
-                    const delay = Math.min(times * 50, 2000);
+                    if (times > 5) {
+                        console.error('[Redis] Máximo de reintentos alcanzado, desistiendo');
+                        return null; // Stop retrying
+                    }
+                    const delay = Math.min(times * 100, 3000);
+                    console.log(`[Redis] Reintentando conexión en ${delay}ms (intento ${times})`);
                     return delay;
                 },
-                maxRetriesPerRequest: 3
+                maxRetriesPerRequest: 3,
+                enableOfflineQueue: false,       // No encolar comandos si está offline
             });
 
             this.client.on('connect', () => {
@@ -177,14 +187,24 @@ class RedisService {
 
     /**
      * Invalida una clave del cache.
-     * @param {string} key - Clave a invalidar
+     * @param {string} key - Clave a invalidar (puede incluir wildcard * para patterns)
      * @returns {Promise<void>}
      */
     async invalidateCache(key) {
         if (!this.isConnected || !this.client) return;
 
         try {
-            await this.client.del(`cache:${key}`);
+            // FIX [M-09]: Soporte para wildcards en invalidación
+            if (key.includes('*')) {
+                const pattern = `cache:${key}`;
+                const keys = await this.client.keys(pattern);
+                if (keys.length > 0) {
+                    await this.client.del(...keys);
+                    console.log(`[Cache] Invalidadas ${keys.length} claves matching ${pattern}`);
+                }
+            } else {
+                await this.client.del(`cache:${key}`);
+            }
         } catch (err) {
             console.error('[Redis] Error al invalidar cache:', err.message);
         }
