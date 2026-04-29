@@ -95,7 +95,7 @@ async function deleteMe(req, res, next) {
  */
 async function listUsers(req, res, next) {
     try {
-        // FIX [C-01]: Pagination.parse/meta no existen — usar Pagination.offset().
+        // Se usa Pagination.offset() para obtener skip/limit y metadata de paginación
         const pager   = Pagination.offset(req.query, {
             allowedSortFields: ['createdAt', 'name', 'email', 'isActive'],
             defaultSort: '-createdAt',

@@ -64,7 +64,7 @@ const options = {
                     properties: {
                         id: { type: 'string' },
                         nombre: { type: 'string' },
-                        tipo: { type: 'string', enum: ['efectivo', 'banco', 'credito', 'ahorro', 'inversion'] },
+                        tipo: { type: 'string', enum: Object.values(TIPOS_BASE) },
                         moneda: { type: 'string' },
                         balance: { type: 'number' },
                         isActive: { type: 'boolean' }
@@ -75,8 +75,7 @@ const options = {
                     properties: {
                         id: { type: 'string' },
                         nombre: { type: 'string' },
-                        // FIX [P-04]: Sincronizar con TIPOS_BASE
-                        tipo: { type: 'string', enum: Object.values(TIPOS_BASE) },
+                        tipo: { type: 'string', enum: Object.values(TIPOS) },
                         color: { type: 'string' },
                         icono: { type: 'string' }
                     }
@@ -85,14 +84,12 @@ const options = {
                     type: 'object',
                     properties: {
                         id: { type: 'string' },
-                        // FIX [P-04]: Sincronizar con TIPOS_BASE para finanzas personales
-                        tipo: { type: 'string', enum: Object.values(TIPOS_BASE) },
+                        tipo: { type: 'string', enum: Object.values(TIPOS) },
                         monto: { type: 'number' },
                         descripcion: { type: 'string' },
                         fecha: { type: 'string', format: 'date-time' },
                         categoria: { type: 'string' },
-                        // FIX [P-04]: Sincronizar con ESTADOS_PERSONALES para finanzas personales
-                        estado: { type: 'string', enum: Object.values(ESTADOS_PERSONALES) }
+                       estado: { type: 'string', enum: Object.values(ESTADOS_PERSONALES) }
                     }
                 },
                 Error: {

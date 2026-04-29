@@ -2,6 +2,18 @@
  * @file user.js
  * @description Mongoose User model — schema, validaciones, hooks y helpers de instancia.
  *
+ * Diseño de seguridad:
+ *   - Hashing de contraseñas centralizado en el pre-save hook únicamente. El password
+ *     llega como texto plano y se hashea una sola vez. Esto evita el double-hashing
+ *     que ocurre cuando Mongoose marca isModified('password') === true en documentos nuevos.
+ *   - Operaciones atómicas para contadores de login: se usan operadores $inc/$set
+ *     en lugar de read-modify-save para evitar race conditions bajo carga concurrente.
+ *   - Revocación de tokens: isTokenValidAfterPasswordChange invalida todos los tokens
+ *     emitidos antes de un cambio de contraseña.
+ *   - Validación de contraseñas: la política se aplica en PasswordUtils.validate()
+ *     antes del hashing, ya que el schema almacena el hash (60 caracteres), no el texto plano.
+ *   - Índice de email único optimizado: un solo índice compuesto con partialFilterExpression
+ *     satisface todas las queries de autenticación sin duplicación.
  */
 
 'use strict';
@@ -9,17 +21,20 @@
 const mongoose       = require('mongoose');
 const { Schema }     = mongoose;
 const PasswordUtils  = require('../utils/password.utils');
+// FIX [C-04]: Usar JwtUtils en lugar de AuthMiddleware para romper dependencia circular.
 // Antes: User.js → AuthMiddleware → (lazy) User.js
 // Ahora: User.js → JwtUtils (sin circular)
 const JwtUtils       = require('../utils/jwt.utils');
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
+// FIX [M-05]: Agregar roles aprobador y contador — requeridos en businessFinance.routes.js
 // Sin esto, AuthMiddleware.requireRole('aprobador','contador') siempre devuelve 403.
 const ROLES     = ['user', 'admin', 'superadmin', 'aprobador', 'contador'];
 const PROVIDERS = ['local', 'google', 'github'];
-
+// Número máximo de intentos fallidos de login antes de bloquear la cuenta
 const MAX_LOGIN_ATTEMPTS = parseInt(process.env.MAX_LOGIN_ATTEMPTS, 10) || 5;
+// Duración del bloqueo en milisegundos (15 minutos por defecto)
 const LOCK_DURATION_MS   = (parseInt(process.env.LOCK_DURATION_MINUTES, 10) || 15) * 60_000;
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -29,7 +44,7 @@ const userSchema = new Schema({
     // ── Identidad ─────────────────────────────────────────────────────────────
 
     name: {
-      
+        // FIX naming: 'nombre' mezclaba idiomas — se unifica en inglés
         type:      String,
         trim:      true,
         maxlength: [100, 'El nombre no puede superar 100 caracteres'],
@@ -38,7 +53,8 @@ const userSchema = new Schema({
     email: {
         type:      String,
         required:  [true, 'El email es obligatorio'],
-     
+        // FIX: unique e index se definen en userSchema.index() abajo,
+        // no en el campo, para evitar crear dos índices sobre el mismo campo.
         lowercase: true,
         trim:      true,
         match:     [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Formato de email inválido'],
@@ -48,7 +64,11 @@ const userSchema = new Schema({
 
     password: {
         type:   String,
-      
+        // FIX: 'required' removido — usuarios OAuth no tienen password local.
+        //      La validación condicional está en pre-validate hook.
+        // FIX: 'minlength' removido — el schema recibe el HASH (60 chars), no
+        //      el texto plano. minlength: 8 nunca fallaba (60 > 8 siempre).
+        //      PasswordUtils.validate() se encarga de la política real.
         select: false,
     },
 
@@ -171,6 +191,10 @@ const userSchema = new Schema({
 
 // ─── Índices ──────────────────────────────────────────────────────────────────
 
+// FIX [P-09]: Un único índice compuesto con partialFilterExpression reemplaza:
+//   - el index: true en el campo email (que creaba un índice separado)
+//   - el unique: true en el campo email (que creaba otro índice)
+//   - el userSchema.index({ email: 1, isDeleted: 1 }) anterior
 // El índice resultante satisface findOne({ email }) y findOne({ email, isDeleted: false }).
 // La constraint unique aplica solo a documentos donde isDeleted: false.
 userSchema.index(
@@ -202,15 +226,12 @@ userSchema.pre('validate', function (next) {
 // ─── Pre-save: ÚNICO punto de hashing ────────────────────────────────────────
 
 /**
+ * FIX [BUG-01]: Hashing centralizado en un solo lugar.
  *
- * Por qué no se hashea en la ruta (middleware) + aquí:
- *   En documentos nuevos, Mongoose.isModified() retorna true para TODOS
- *   los campos. El guard `if (!this.isModified('password'))` no salta
- *   en el primer save. Si el password llega ya hasheado desde un middleware
- *   de ruta, este hook lo vuelve a hashear: bcrypt(bcrypt(password)).
- *   El resultado se almacena en DB y bcrypt.compare() siempre falla.
- *
- * Solución: el password llega como texto plano, este hook lo hashea UNA vez.
+ * La contraseña debe llegar como texto plano porque Mongoose.isModified() retorna
+ * true para TODOS los campos en documentos nuevos. Si el password llegara pre-hasheado
+ * desde un middleware de ruta, este hook lo volvería a hashear (double-hashing),
+ * resultando en un hash inválido que bcrypt.compare() nunca verificaría correctamente.
  */
 userSchema.pre('save', async function (next) {
     try {
@@ -251,7 +272,7 @@ userSchema.methods.comparePassword = function (plainPassword) {
  * El payload solo incluye lo estrictamente necesario — nunca campos sensibles.
  */
 userSchema.methods.generateTokenPair = function () {
-    // FIX [C-04]: Delegado a JwtUtils — sin dependencia circular.
+    // Delegado a JwtUtils para evitar dependencia circular User ↔ AuthMiddleware
     return JwtUtils.generateTokenPair({
         userId: this._id.toString(),
         email:  this.email,
@@ -287,13 +308,13 @@ userSchema.statics.findByEmailForAuth = function (email) {
 };
 
 /**
+ * FIX [BUG-03]: Registra intento fallido de login de forma ATÓMICA.
  *
- * Por qué no se usa this.loginAttempts++ + this.save():
- *   Bajo carga concurrente, 10 requests leen loginAttempts: 0, todos incrementan
- *   a 1 y guardan. Resultado final: loginAttempts: 1 (en lugar de 10).
- *   El lockout nunca se activa. Toda la protección contra fuerza bruta es inútil.
- *
- * $inc es una operación atómica de MongoDB — safe para concurrencia.
+ * Se usa $inc en lugar de read-modify-save (this.loginAttempts++ + this.save())
+ * porque bajo carga concurrente, múltiples requests podrían leer el mismo valor
+ * inicial, incrementarlo localmente a 1, y guardar, resultando en loginAttempts: 1
+ * en lugar del valor correcto. Con $inc (operación atómica de MongoDB), cada
+ * incremento se aplica secuencialmente sin race conditions.
  *
  * @param {string|ObjectId} userId
  */
@@ -312,6 +333,7 @@ userSchema.statics.registerFailedLogin = async function (userId) {
 };
 
 /**
+ * FIX [BUG-03]: Limpia contadores de fuerza bruta de forma ATÓMICA.
  *
  * @param {string|ObjectId} userId
  * @param {string}          ip    - IP real del cliente (ver nota sobre trust proxy).

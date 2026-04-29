@@ -65,13 +65,14 @@ const analizarCategorias = (categorias) => {
 };
 
 /**
- * Main analysis function with validation and correct calculations
- * FIX: Now correctly calculates averages by transaction count (not categories)
+ * Main analysis function with validation and correct calculations.
+ * El promedio se calcula por cantidad de transacciones, no por categorías,
+ * para reflejar correctamente el gasto promedio individual.
  * @param {Array} data - Array of PersonalFinance documents
  * @returns {Object} Financial analysis with consistent response format
  */
 exports.analyze = (data) => {
-    // FIX: Validate input
+    // Validación defensiva de entrada
     if (!Array.isArray(data)) {
         return {
             success: false,
@@ -97,7 +98,7 @@ exports.analyze = (data) => {
     // Analyze categories
     const { categoriaMayor } = analizarCategorias(categorias);
 
-    // FIX: Correct average calculation by transaction count (not categories)
+    // Cálculo de promedio por cantidad de transacciones (no por categorías)
     const totalTransacciones = ingresos.length + gastos.length;
 
     return {
@@ -114,7 +115,6 @@ exports.analyze = (data) => {
                 totalGastos: gastos.length,
                 totalCategorias: Object.keys(categorias).length
             },
-            // FIX: Calculate averages correctly by transaction count
             promedios: {
                 ingresoPromedio: ingresos.length > 0 ? totalIngresos / ingresos.length : 0,
                 gastoPromedio: gastos.length > 0 ? totalGastos / gastos.length : 0,

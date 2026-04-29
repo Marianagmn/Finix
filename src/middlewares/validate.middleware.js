@@ -6,8 +6,6 @@
  *  - Type inference en TypeScript (y autocompletado en JS con JSDoc).
  *  - Schema reutilizable entre frontend y backend.
  *  - API declarativa más limpia que chains de .isEmail().isLength().
- *
- *
  * Instalación: npm install zod
  */
 
@@ -81,8 +79,7 @@ const createPersonalFinanceSchema = z.object({
     metodoPago: z.enum(Object.values(METODOS_PAGO)).default('efectivo'),
     descripcion: z.string().trim().max(500).optional(),
     fecha: z.string().datetime().or(z.date()).optional(),
-    // FIX [I-03]: Usar ESTADOS_PERSONALES para finanzas personales
-    estado: z.enum(Object.values(ESTADOS_PERSONALES)).default('completado'),
+    estado: z.enum(Object.values(ESTADOS)).default('completado'),
     esAhorro: z.boolean().default(false),
     tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
     esTransferenciaInterna: z.boolean().default(false),
@@ -98,8 +95,7 @@ const financeQuerySchema = z.object({
     limit: z.string().or(z.number()).transform(v => parseInt(v)).default('20'),
     sort: z.string().optional(),
     tipo: z.enum(TIPOS_BASE_ARRAY).optional(),
-    // FIX [I-03]: Usar ESTADOS_PERSONALES para finanzas personales
-    estado: z.enum(Object.values(ESTADOS_PERSONALES)).optional(),
+    estado: z.enum(Object.values(ESTADOS)).optional(),
     fechaDesde: z.string().datetime().optional(),
     fechaHasta: z.string().datetime().optional(),
 }).strip();

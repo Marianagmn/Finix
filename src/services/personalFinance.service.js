@@ -4,8 +4,9 @@
  * @file personalFinance.service.js
  * @description Capa de negocio para finanzas personales.
  *
- *
- * Patrón: controller → service → model (igual que businessFinance y auth).
+ * Arquitectura: controller → service → model (consistente con businessFinance y auth).
+ * El controller actúa como coordinador delgado, delegando toda la lógica de negocio
+ * a esta capa de servicio.
  */
 
 const mongoose       = require('mongoose');

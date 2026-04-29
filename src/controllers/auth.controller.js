@@ -1,7 +1,7 @@
 /**
  * @file auth.controller.js
  * @description Controllers de autenticación — delegan lógica a AuthService.
- *
+ */
 
 'use strict';
 

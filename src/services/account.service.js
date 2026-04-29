@@ -3,7 +3,6 @@
 /**
  * @file account.service.js
  * @description Capa de negocio para cuentas financieras.
- * Patrón: controller (route handler) → service → model.
  */
 
 const Account      = require('../models/Account');

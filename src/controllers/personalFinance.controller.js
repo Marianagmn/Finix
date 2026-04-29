@@ -28,7 +28,7 @@ exports.createFinance = async (req, res, next) => {
         const finance = await PersonalFinanceService.create(req.body, req.user.userId);
         ApiResponse.created(res, finance, 'Registro creado exitosamente');
     } catch (err) {
-        next(err); // FIX [I-05]: next(err) en lugar de handleError local
+        next(err); 
     }
 };
 

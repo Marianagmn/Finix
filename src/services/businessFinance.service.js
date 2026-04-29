@@ -18,6 +18,7 @@ const BusinessFinance = require('../models/businessFinance.model');
 const { AppError }   = require('../middlewares/error.middleware');
 const Pagination     = require('../utils/pagination.utils');
 const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
+const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,8 +28,12 @@ const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIEL
  * @param {Array} items - Items desde lean()
  * @returns {Array} Items con montos normalizados
  */
-// FIX [I-01]: Usar import estático en lugar de require dinámico dentro de función
-const normalizeAmounts = (items) => normalizeAmountsFromUtils(items, BUSINESS_FINANCE_MONEY_FIELDS);
+const normalizeAmounts = (items) => {
+    if (!Array.isArray(items)) return items;
+    // FIX [I-02]: Delegado a money.utils para evitar duplicar la lógica
+    const { normalizeAmounts: norm, BUSINESS_FINANCE_MONEY_FIELDS: FIELDS } = require('../utils/money.utils');
+    return norm(items, FIELDS);
+};
 
 // Campos que se permiten actualizar en un borrador
 const UPDATABLE_FIELDS = [
@@ -112,7 +117,7 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        // FIX: Normalizar montos de centavos a moneda real
+        // Normalización de montos: el modelo almacena en centavos pero lean() no aplica getters
         return { items: normalizeAmounts(items), total };
     }
 
@@ -150,8 +155,7 @@ class BusinessFinanceService {
 
         if (txn.estado !== 'borrador') {
             throw AppError.badRequest(
-                'Solo se pueden editar transacciones en estado borrador. ' +
-                'Para modificar una contabilizada, genere un reverso.'
+                'Solo se pueden editar transacciones en estado borrador. Para modificar una contabilizada, genere un reverso.'
             );
         }
 
@@ -186,9 +190,7 @@ class BusinessFinanceService {
         const txn = await BusinessFinanceService.getOne(id, businessId);
 
         if (txn.estado === 'contabilizado') {
-            throw AppError.badRequest(
-                'No se puede eliminar una transacción contabilizada. Use un reverso.'
-            );
+            throw AppError.badRequest('No se puede eliminar una transacción contabilizada. Use un reverso.');
         }
 
         await txn.softDelete(userId);
@@ -310,8 +312,8 @@ class BusinessFinanceService {
         const reverso = txn.generarReverso(userId, motivo);
         reverso.updatedBy = userId;
 
-        // FIX [M-02]: Envolver en session MongoDB para atomicidad completa.
-        // Si el proceso muere entre los dos saves, la DB NO queda inconsistente.
+        // Transacción MongoDB: garantiza atomicidad entre creación del reverso
+        // y actualización del documento original (rollback automático si falla)
         const session = await mongoose.startSession();
         try {
             await session.withTransaction(async () => {
@@ -388,7 +390,7 @@ class BusinessFinanceService {
      * @param {string} businessId
      * @param {string} aprobadorId
      * @param {object} pagination
-     * @returns {Promise<{ items: object[], total: number }>}
+     * @returns {Promise<{ items: object[], total: number }>
      */
     static async getPendingApprovals(businessId, aprobadorId, pagination = {}) {
         const { skip = 0, limit = 20 } = pagination;
@@ -409,7 +411,7 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        // FIX: Normalizar montos de centavos a moneda real
+        // Normalización de montos: el modelo almacena en centavos pero lean() no aplica getters
         return { items: normalizeAmounts(items), total };
     }
 
@@ -419,7 +421,7 @@ class BusinessFinanceService {
      * @param {string}  businessId
      * @param {'cobrar'|'pagar'} tipo
      * @param {object}  pagination
-     * @returns {Promise<{ items: object[], total: number }>}
+     * @returns {Promise<{ items: object[], total: number }>
      */
     static async getOverdue(businessId, tipo, pagination = {}) {
         const { skip = 0, limit = 20 } = pagination;
@@ -442,7 +444,7 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        // FIX: Normalizar montos de centavos a moneda real
+        // Normalización de montos: el modelo almacena en centavos pero lean() no aplica getters
         return { items: normalizeAmounts(items), total };
     }
 }
