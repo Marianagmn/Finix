@@ -23,7 +23,7 @@
 'use strict';
 
 const User           = require('../models/User');
-const AuthMiddleware = require('../middlewares/auth.middleware');
+const JwtUtils       = require('../utils/jwt.utils');
 const { AppError }   = require('../middlewares/error.middleware');
 
 class AuthService {
@@ -121,7 +121,7 @@ class AuthService {
             throw AppError.unauthorized('Refresh token no proporcionado');
         }
 
-        const decoded = AuthMiddleware.verifyRefreshToken(refreshToken);
+        const decoded = JwtUtils.verifyRefreshToken(refreshToken);
 
         const user = await User.findById(decoded.userId);
         if (!user || !user.isActive) {

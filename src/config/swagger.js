@@ -7,6 +7,15 @@
 
 const swaggerJSDoc = require('swagger-jsdoc');
 
+// Importar constantes para mantener sincronizados los enums
+const {
+    ESTADOS,
+    ESTADOS_PERSONALES,
+    TIPOS_BASE,
+    TIPOS,
+    METODOS_PAGO
+} = require('../constants/transaction.constants');
+
 const options = {
     definition: {
         openapi: '3.0.0',
@@ -66,7 +75,8 @@ const options = {
                     properties: {
                         id: { type: 'string' },
                         nombre: { type: 'string' },
-                        tipo: { type: 'string', enum: ['ingreso', 'gasto', 'transferencia'] },
+                        // FIX [P-04]: Sincronizar con TIPOS_BASE
+                        tipo: { type: 'string', enum: Object.values(TIPOS_BASE) },
                         color: { type: 'string' },
                         icono: { type: 'string' }
                     }
@@ -75,12 +85,14 @@ const options = {
                     type: 'object',
                     properties: {
                         id: { type: 'string' },
-                        tipo: { type: 'string', enum: ['ingreso', 'gasto', 'transferencia'] },
+                        // FIX [P-04]: Sincronizar con TIPOS_BASE para finanzas personales
+                        tipo: { type: 'string', enum: Object.values(TIPOS_BASE) },
                         monto: { type: 'number' },
                         descripcion: { type: 'string' },
                         fecha: { type: 'string', format: 'date-time' },
                         categoria: { type: 'string' },
-                        estado: { type: 'string', enum: ['borrador', 'completado', 'cancelado'] }
+                        // FIX [P-04]: Sincronizar con ESTADOS_PERSONALES para finanzas personales
+                        estado: { type: 'string', enum: Object.values(ESTADOS_PERSONALES) }
                     }
                 },
                 Error: {

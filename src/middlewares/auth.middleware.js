@@ -49,11 +49,8 @@ class AuthMiddleware {
      */
     static signAccessToken(payload) {
         AuthMiddleware._assertPayload(payload);
-        return jwt.sign(
-            { ...payload, type: 'access' },
-            ACCESS_SECRET,
-            { expiresIn: ACCESS_EXPIRES, algorithm: 'HS256', issuer: process.env.JWT_ISSUER || 'api' }
-        );
+        // FIX [P-01]: Delegar a JwtUtils para usar las constantes definidas ahí
+        return JwtUtils.signAccessToken(payload);
     }
 
     /**
@@ -65,11 +62,8 @@ class AuthMiddleware {
      */
     static signRefreshToken(payload) {
         AuthMiddleware._assertPayload(payload);
-        return jwt.sign(
-            { ...payload, type: 'refresh' },
-            REFRESH_SECRET,
-            { expiresIn: REFRESH_EXPIRES, algorithm: 'HS256', issuer: process.env.JWT_ISSUER || 'api' }
-        );
+        // FIX [P-01]: Delegar a JwtUtils para usar las constantes definidas ahí
+        return JwtUtils.signRefreshToken(payload);
     }
 
     /**
@@ -95,15 +89,8 @@ class AuthMiddleware {
      * @throws {AppError} 401 si inválido o expirado.
      */
     static verifyAccessToken(token) {
-        try {
-            const decoded = jwt.verify(token, ACCESS_SECRET, { algorithms: ['HS256'] });
-            if (decoded.type !== 'access') throw AppError.unauthorized('Tipo de token inválido');
-            return decoded;
-        } catch (err) {
-            if (err instanceof AppError) throw err;
-            if (err.name === 'TokenExpiredError')  throw AppError.unauthorized('Token expirado');
-            throw AppError.unauthorized('Token inválido');
-        }
+        // FIX [P-01]: Delegar a JwtUtils para usar las constantes definidas ahí
+        return JwtUtils.verifyAccessToken(token);
     }
 
     /**
@@ -114,15 +101,8 @@ class AuthMiddleware {
      * @throws {AppError} 401 si inválido o expirado.
      */
     static verifyRefreshToken(token) {
-        try {
-            const decoded = jwt.verify(token, REFRESH_SECRET, { algorithms: ['HS256'] });
-            if (decoded.type !== 'refresh') throw AppError.unauthorized('Tipo de token inválido');
-            return decoded;
-        } catch (err) {
-            if (err instanceof AppError) throw err;
-            if (err.name === 'TokenExpiredError')  throw AppError.unauthorized('Refresh token expirado');
-            throw AppError.unauthorized('Refresh token inválido');
-        }
+        // FIX [P-01]: Delegar a JwtUtils para usar las constantes definidas ahí
+        return JwtUtils.verifyRefreshToken(token);
     }
 
     // ── Guard middlewares de Express ──────────────────────────────────────────
