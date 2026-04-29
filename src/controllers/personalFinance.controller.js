@@ -4,12 +4,6 @@
  * @file personalFinance.controller.js
  * @description Controller delgado para finanzas personales.
  *
- * FIX [C-06/R-01]: Toda la lógica de negocio movida a PersonalFinanceService.
- * FIX [I-05]:      Reemplazado handleError() local por next(err) para usar el
- *                  error handler global y mantener trazabilidad de requestId.
- * FIX [C-08/I-01]: Removido 'new Pagination.OffsetPagination()' — la API
- *                  correcta es PersonalFinanceService.list() que usa Pagination.offset().
- *
  * El controller solo:
  *   1. Parsea req (body, params, query, user)
  *   2. Llama al service
@@ -34,7 +28,7 @@ exports.createFinance = async (req, res, next) => {
         const finance = await PersonalFinanceService.create(req.body, req.user.userId);
         ApiResponse.created(res, finance, 'Registro creado exitosamente');
     } catch (err) {
-        next(err); // FIX [I-05]: next(err) en lugar de handleError local
+        next(err); 
     }
 };
 
@@ -102,7 +96,6 @@ exports.deleteFinance = async (req, res, next) => {
 /**
  * GET /api/finances/analysis
  * Análisis financiero: ingresos, gastos, categorías, promedios.
- * FIX [M-01]: usa aggregation para >500 registros (via service).
  */
 exports.getAnalysis = async (req, res, next) => {
     try {

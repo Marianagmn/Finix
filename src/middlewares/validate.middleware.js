@@ -6,11 +6,6 @@
  *  - Type inference en TypeScript (y autocompletado en JS con JSDoc).
  *  - Schema reutilizable entre frontend y backend.
  *  - API declarativa más limpia que chains de .isEmail().isLength().
- *
- * FIX [P-02]: Reemplaza los if (!email || !password) de los controllers.
- *   Un payload { "email": {"$gt": ""} } llegaba sin sanitizar (NoSQL injection).
- *   Los schemas de Zod garantizan que solo strings válidos lleguen al controller.
- *
  * Instalación: npm install zod
  */
 
@@ -23,6 +18,7 @@ const { AppError } = require('./error.middleware');
 const {
     TIPOS_BASE_ARRAY,
     ESTADOS,
+    ESTADOS_PERSONALES,
     METODOS_PAGO,
     MONEDAS
 } = require('../constants/transaction.constants');
@@ -83,7 +79,7 @@ const createPersonalFinanceSchema = z.object({
     metodoPago: z.enum(Object.values(METODOS_PAGO)).default('efectivo'),
     descripcion: z.string().trim().max(500).optional(),
     fecha: z.string().datetime().or(z.date()).optional(),
-    estado: z.enum(Object.values(ESTADOS)).default('completado'),
+    estado: z.enum(Object.values(ESTADOS_PERSONALES)).default('completado'),
     esAhorro: z.boolean().default(false),
     tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
     esTransferenciaInterna: z.boolean().default(false),
@@ -99,7 +95,7 @@ const financeQuerySchema = z.object({
     limit: z.string().or(z.number()).transform(v => parseInt(v)).default('20'),
     sort: z.string().optional(),
     tipo: z.enum(TIPOS_BASE_ARRAY).optional(),
-    estado: z.enum(Object.values(ESTADOS)).optional(),
+    estado: z.enum(Object.values(ESTADOS_PERSONALES)).optional(),
     fechaDesde: z.string().datetime().optional(),
     fechaHasta: z.string().datetime().optional(),
 }).strip();

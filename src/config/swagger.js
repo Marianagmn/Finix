@@ -7,6 +7,15 @@
 
 const swaggerJSDoc = require('swagger-jsdoc');
 
+// Importar constantes para mantener sincronizados los enums
+const {
+    ESTADOS,
+    ESTADOS_PERSONALES,
+    TIPOS_BASE,
+    TIPOS,
+    METODOS_PAGO
+} = require('../constants/transaction.constants');
+
 const options = {
     definition: {
         openapi: '3.0.0',
@@ -55,7 +64,7 @@ const options = {
                     properties: {
                         id: { type: 'string' },
                         nombre: { type: 'string' },
-                        tipo: { type: 'string', enum: ['efectivo', 'banco', 'credito', 'ahorro', 'inversion'] },
+                        tipo: { type: 'string', enum: Object.values(TIPOS_BASE) },
                         moneda: { type: 'string' },
                         balance: { type: 'number' },
                         isActive: { type: 'boolean' }
@@ -66,7 +75,7 @@ const options = {
                     properties: {
                         id: { type: 'string' },
                         nombre: { type: 'string' },
-                        tipo: { type: 'string', enum: ['ingreso', 'gasto', 'transferencia'] },
+                        tipo: { type: 'string', enum: Object.values(TIPOS) },
                         color: { type: 'string' },
                         icono: { type: 'string' }
                     }
@@ -75,12 +84,12 @@ const options = {
                     type: 'object',
                     properties: {
                         id: { type: 'string' },
-                        tipo: { type: 'string', enum: ['ingreso', 'gasto', 'transferencia'] },
+                        tipo: { type: 'string', enum: Object.values(TIPOS) },
                         monto: { type: 'number' },
                         descripcion: { type: 'string' },
                         fecha: { type: 'string', format: 'date-time' },
                         categoria: { type: 'string' },
-                        estado: { type: 'string', enum: ['borrador', 'completado', 'cancelado'] }
+                       estado: { type: 'string', enum: Object.values(ESTADOS_PERSONALES) }
                     }
                 },
                 Error: {

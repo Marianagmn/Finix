@@ -17,7 +17,7 @@ const mongoose       = require('mongoose');
 const BusinessFinance = require('../models/businessFinance.model');
 const { AppError }   = require('../middlewares/error.middleware');
 const Pagination     = require('../utils/pagination.utils');
-const { normalizeAmounts, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
+const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,12 +27,8 @@ const { normalizeAmounts, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/mo
  * @param {Array} items - Items desde lean()
  * @returns {Array} Items con montos normalizados
  */
-const normalizeAmounts = (items) => {
-    if (!Array.isArray(items)) return items;
-    // FIX [I-02]: Delegado a money.utils para evitar duplicar la lógica
-    const { normalizeAmounts: norm, BUSINESS_FINANCE_MONEY_FIELDS: FIELDS } = require('../utils/money.utils');
-    return norm(items, FIELDS);
-};
+
+const normalizeAmounts = (items) => normalizeAmountsFromUtils(items, BUSINESS_FINANCE_MONEY_FIELDS);
 
 // Campos que se permiten actualizar en un borrador
 const UPDATABLE_FIELDS = [

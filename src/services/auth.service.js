@@ -2,38 +2,22 @@
  * @file auth.service.js
  * @description Capa de servicio para autenticación — toda la lógica de negocio vive aquí.
  *
- * FIX [P-05 / P-06]: Extrae la lógica de negocio del controller y del modelo.
- *
- * Antes:
- *   - auth.controller.js hacía queries + lógica de negocio + formateo de respuesta.
- *   - user.js tenía métodos de instancia con lógica de negocio acoplada al documento.
- *   - Imposible testear sin HTTP, imposible reutilizar desde jobs o scripts.
- *
- * Ahora:
  *   - AuthService orquesta toda la lógica de autenticación.
  *   - auth.controller.js solo parsea request → llama service → formatea response.
  *   - user.js solo define schema, validaciones y helpers de persistencia.
  *   - AuthService es testeable con unit tests puros (sin HTTP, sin Express).
- *
- * Nota sobre BUG-05 (refresh token sin revocación):
- *   Para una solución completa necesitas Redis. El patrón está documentado
- *   en refreshTokens() con TODO comentado.
  */
 
 'use strict';
 
 const User           = require('../models/User');
-const AuthMiddleware = require('../middlewares/auth.middleware');
+const JwtUtils       = require('../utils/jwt.utils');
 const { AppError }   = require('../middlewares/error.middleware');
 
 class AuthService {
 
     /**
      * Registra un nuevo usuario.
-     *
-     * FIX [BUG-02]: Elimina el patrón findOne + create (TOCTOU).
-     * Ahora intenta crear directamente y captura el error 11000 del índice
-     * unique — esto es atómico por diseño de MongoDB.
      *
      * La contraseña llega en texto plano; el pre-save hook del modelo la hashea.
      *
@@ -105,14 +89,6 @@ class AuthService {
     /**
      * Rota el par de tokens usando un refresh token válido.
      *
-     * TODO [BUG-05]: Implementar blacklist de refresh tokens para revocación real.
-     * Patrón con Redis:
-     *   1. Extraer el jti (JWT ID) del token entrante.
-     *   2. Verificar que el jti NO está en el set Redis 'token:blacklist'.
-     *   3. Agregar el jti al set con TTL = REFRESH_EXPIRES.
-     *   4. Emitir nuevo par con nuevo jti.
-     * Sin esto, un refresh token robado es válido hasta su expiración natural.
-     *
      * @param {string} refreshToken - Token desde cookie httpOnly.
      * @returns {Promise<{ accessToken: string, refreshToken: string, user: object }>}
      */
@@ -121,7 +97,7 @@ class AuthService {
             throw AppError.unauthorized('Refresh token no proporcionado');
         }
 
-        const decoded = AuthMiddleware.verifyRefreshToken(refreshToken);
+        const decoded = JwtUtils.verifyRefreshToken(refreshToken);
 
         const user = await User.findById(decoded.userId);
         if (!user || !user.isActive) {
