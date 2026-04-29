@@ -12,9 +12,10 @@
 
 'use strict';
 
-const User          = require('./user');
-const PasswordUtils = require('./password.utils');
-const { AppError }  = require('./error.middleware');
+const User          = require('../models/User');
+const PasswordUtils = require('../utils/password.utils');
+const Pagination    = require('../utils/pagination.utils');
+const { AppError }  = require('../middlewares/error.middleware');
 
 // Campos que un usuario puede editar en su propio perfil
 const ALLOWED_PROFILE_FIELDS = ['name', 'email'];
@@ -62,11 +63,25 @@ class UserService {
         }
 
         const [items, total] = await Promise.all([
-            User.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }),
+            User.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
             User.countDocuments(query),
         ]);
 
-        return { items: items.map(u => u.toJSON()), total };
+        // FIX [I-07]: lean() retorna POJOs — NO tienen .toJSON().
+        // Aplicar la misma allowlist que el transform de toJSON del schema.
+        const serialize = (u) => ({
+            id:              u._id,
+            name:            u.name,
+            email:           u.email,
+            roles:           u.roles,
+            provider:        u.provider,
+            isActive:        u.isActive,
+            isEmailVerified: u.isEmailVerified,
+            lastLoginAt:     u.lastLoginAt,
+            createdAt:       u.createdAt,
+        });
+
+        return { items: items.map(serialize), total };
     }
 
     /**

@@ -45,7 +45,7 @@
 'use strict';
 
 const mongoose     = require('mongoose');
-const { AppError } = require('./error.middleware');
+const { AppError } = require('../middlewares/error.middleware');
 
 // ─── Constantes globales ──────────────────────────────────────────────────────
 

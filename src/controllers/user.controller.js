@@ -20,9 +20,9 @@
 
 'use strict';
 
-const UserService  = require('./user.service');
-const ApiResponse  = require('./response.utils');
-const Pagination   = require('./pagination.utils');
+const UserService  = require('../services/user.service');
+const ApiResponse  = require('../utils/response.utils');
+const Pagination   = require('../utils/pagination.utils');
 
 // ─── Perfil propio ────────────────────────────────────────────────────────────
 
@@ -95,16 +95,19 @@ async function deleteMe(req, res, next) {
  */
 async function listUsers(req, res, next) {
     try {
-        const pagination = Pagination.parse(req.query);
-        const filters    = {
+        // FIX [C-01]: Pagination.parse/meta no existen — usar Pagination.offset().
+        const pager   = Pagination.offset(req.query, {
+            allowedSortFields: ['createdAt', 'name', 'email', 'isActive'],
+            defaultSort: '-createdAt',
+        });
+        const filters = {
             search:   req.query.search,
             isActive: req.query.isActive,
             role:     req.query.role,
         };
 
-        const { items, total } = await UserService.list(filters, pagination);
-        const meta = Pagination.meta(total, pagination.page, pagination.limit);
-        ApiResponse.paginated(res, items, meta);
+        const { items, total } = await UserService.list(filters, { skip: pager.skip, limit: pager.limit });
+        ApiResponse.paginated(res, items, pager.buildMeta(total));
     } catch (err) {
         next(err);
     }

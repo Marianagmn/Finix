@@ -13,9 +13,22 @@
 
 'use strict';
 
-const BusinessFinance = require('./BusinessFinance');
-const { AppError }    = require('./error.middleware');
-const Pagination      = require('./pagination.utils');
+const mongoose       = require('mongoose');
+const BusinessFinance = require('../models/businessFinance.model');
+const { AppError }   = require('../middlewares/error.middleware');
+const Pagination     = require('../utils/pagination.utils');
+const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Normaliza montos desde centavos a moneda real
+ * El modelo almacena en centavos (set: v => v * 100) pero lean() no aplica getters
+ * @param {Array} items - Items desde lean()
+ * @returns {Array} Items con montos normalizados
+ */
+// FIX [I-01]: Usar import estático en lugar de require dinámico dentro de función
+const normalizeAmounts = (items) => normalizeAmountsFromUtils(items, BUSINESS_FINANCE_MONEY_FIELDS);
 
 // Campos que se permiten actualizar en un borrador
 const UPDATABLE_FIELDS = [
@@ -99,7 +112,8 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        return { items, total };
+        // FIX: Normalizar montos de centavos a moneda real
+        return { items: normalizeAmounts(items), total };
     }
 
     /**
@@ -293,18 +307,23 @@ class BusinessFinanceService {
             throw AppError.badRequest('No se puede revertir un reverso');
         }
 
-        // generarReverso() retorna el documento SIN guardar
         const reverso = txn.generarReverso(userId, motivo);
         reverso.updatedBy = userId;
 
-        // Guardar reverso y anular original de forma atómica (en la misma sesión idealmente)
-        // TODO: envolver en session de MongoDB para atomicidad completa
-        await reverso.save();
-
-        txn.estado          = 'anulado';
-        txn.motivoAnulacion = motivo;
-        txn.updatedBy       = userId;
-        await txn.save();
+        // FIX [M-02]: Envolver en session MongoDB para atomicidad completa.
+        // Si el proceso muere entre los dos saves, la DB NO queda inconsistente.
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                await reverso.save({ session });
+                txn.estado          = 'anulado';
+                txn.motivoAnulacion = motivo;
+                txn.updatedBy       = userId;
+                await txn.save({ session });
+            });
+        } finally {
+            await session.endSession();
+        }
 
         return reverso.toObject();
     }
@@ -390,7 +409,8 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        return { items, total };
+        // FIX: Normalizar montos de centavos a moneda real
+        return { items: normalizeAmounts(items), total };
     }
 
     /**
@@ -422,7 +442,8 @@ class BusinessFinanceService {
             BusinessFinance.countDocuments(query),
         ]);
 
-        return { items, total };
+        // FIX: Normalizar montos de centavos a moneda real
+        return { items: normalizeAmounts(items), total };
     }
 }
 

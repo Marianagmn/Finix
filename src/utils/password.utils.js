@@ -19,7 +19,7 @@
 'use strict';
 
 const bcrypt       = require('bcryptjs');
-const { AppError } = require('./error.middleware');
+const { AppError } = require('../middlewares/error.middleware');
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 

@@ -23,54 +23,38 @@
 'use strict';
 
 const mongoose = require('mongoose');
-
 const { Schema } = mongoose;
 
-// ─── Enumeration Constants ────────────────────────────────────────────────────
+// ─── Shared Constants ───────────────────────────────────────────────────────────
 
-/** Core transaction types */
-const TIPOS = [
-    'ingreso',              // Revenue / income
-    'gasto',                // Expense / cost
-    'transferencia',        // Inter-account transfer
-    'factura_venta',        // Sales invoice (triggers DIAN e-invoice flow)
-    'factura_compra',       // Purchase invoice
-    'nota_credito',         // Credit note
-    'nota_debito',          // Debit note
-    'nomina',               // Payroll
-    'activo_fijo',          // Fixed-asset acquisition / disposal
-    'provision',            // Accounting provision / accrual
-    'ajuste_contable',      // Manual journal entry / adjustment
-    'anticipo',             // Advance payment (A/R or A/P)
-    'devolucion',           // Return
-];
+const {
+    TIPOS_ARRAY,
+    ESTADOS,
+    METODOS_PAGO,
+    MONEDAS
+} = require('../constants/transaction.constants');
 
-/** Transaction lifecycle states */
-const ESTADOS = [
-    'borrador',             // Draft – not posted
-    'pendiente_aprobacion', // Awaiting approval
-    'aprobado',             // Approved but not yet posted
-    'rechazado',            // Rejected in approval flow
-    'contabilizado',        // Posted to ledger
+// ─── Business-specific Constants ───────────────────────────────────────────────
+
+/** Extended transaction states (BusinessFinance specific) */
+const ESTADOS_EMPRESARIALES = [
+    ...Object.values(ESTADOS),
     'anulado',              // Voided / reversed
     'en_disputa',           // Under dispute (A/P or A/R)
 ];
 
-/** Payment methods */
-const METODOS_PAGO = [
-    'efectivo',
-    'tarjeta_credito',
-    'tarjeta_debito',
-    'transferencia_bancaria',
-    'cheque',
+/** Payment methods (BusinessFinance extended) */
+const METODOS_PAGO_EMPRESARIALES = [
+    ...Object.values(METODOS_PAGO),
+    'transferencia_bancaria',  // Extended form
     'pse',
     'wallet',
-    'credito_comercial',    // Net-30/60/90 trade credit
-    'compensacion',         // Offset / netting
+    'credito_comercial',       // Net-30/60/90 trade credit
+    'compensacion',            // Offset / netting
 ];
 
-/** Supported currencies */
-const MONEDAS = ['COP', 'USD', 'EUR', 'GBP', 'MXN', 'BRL'];
+/** Supported currencies (BusinessFinance extended) */
+const MONEDAS_EMPRESARIALES = ['COP', 'USD', 'EUR', 'GBP', 'MXN', 'BRL'];
 
 /** IVA tariff rates (Colombian tax law) */
 const TARIFAS_IVA = [0, 5, 19];
@@ -280,7 +264,7 @@ const businessFinanceSchema = new Schema({
 
     tipo: {
         type: String,
-        enum: TIPOS,
+        enum: TIPOS_ARRAY,
         required: true,
         index: true,
     },
@@ -315,7 +299,7 @@ const businessFinanceSchema = new Schema({
 
     moneda: {
         type: String,
-        enum: MONEDAS,
+        enum: MONEDAS_EMPRESARIALES,
         default: 'COP',
     },
 
@@ -369,7 +353,7 @@ const businessFinanceSchema = new Schema({
 
     metodoPago: {
         type: String,
-        enum: METODOS_PAGO,
+        enum: METODOS_PAGO_EMPRESARIALES,
         default: 'efectivo',
     },
 
@@ -393,7 +377,7 @@ const businessFinanceSchema = new Schema({
 
     estado: {
         type: String,
-        enum: ESTADOS,
+        enum: ESTADOS_EMPRESARIALES,
         default: 'borrador',
         index: true,
     },
@@ -1133,5 +1117,21 @@ businessFinanceSchema.methods.calcularImpuestos = function (baseImponible) {
 
     return this;
 };
+
+// Soft delete middleware - auto-exclude deleted documents from queries
+businessFinanceSchema.pre(/^find/, function(next) {
+    this.where({ isDeleted: false });
+    next();
+});
+
+businessFinanceSchema.pre('aggregate', function(next) {
+    const pipeline = this.pipeline();
+    if (pipeline.length && pipeline[0].$geoNear) {
+        pipeline.splice(1, 0, { $match: { isDeleted: false } });
+    } else {
+        pipeline.unshift({ $match: { isDeleted: false } });
+    }
+    next();
+});
 
 module.exports = mongoose.model('BusinessFinance', businessFinanceSchema);

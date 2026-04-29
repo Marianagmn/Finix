@@ -4,46 +4,13 @@
  * @module services/simulation.service
  */
 
-const TIPOS = {
-    INGRESO: 'ingreso',
-    GASTO: 'gasto',
-    TRANSFERENCIA: 'transferencia'
-};
-
-const ESTADOS = {
-    COMPLETADO: 'completado'
-};
-
-const CLASIFICACION_GASTOS = {
-    vivienda: 'esencial',
-    comida: 'esencial',
-    alimentacion: 'esencial',
-    transporte: 'esencial',
-    servicios: 'esencial',
-    salud: 'esencial',
-    educacion: 'esencial',
-    entretenimiento: 'discrecional',
-    ocio: 'discrecional',
-    compras: 'discrecional',
-    shopping: 'discrecional',
-    lujo: 'discrecional',
-    restaurantes: 'discrecional',
-    hobbies: 'discrecional'
-};
+const { TIPOS, ESTADOS, CLASIFICACION_GASTOS } = require('../constants/transaction.constants');
+const { normalizarCategoria, clasificarCategoria } = require('../utils/category.utils');
+const { esTransaccionValida, esGastoValido, extraerMonto, extraerFecha } = require('../utils/filter.utils');
 
 // ============================================================================
 // SECTION 1: Data Processing (Input sanitization & aggregation)
 // ============================================================================
-
-/**
- * Advanced category normalization with string cleaning
- * @param {*} cat - Raw category value
- * @returns {string} Normalized category string
- */
-const normalizarCategoria = (cat) => {
-    if (!cat) return 'sin_categoria';
-    return cat.toString().toLowerCase().trim().replace(/\s+/g, '_') || 'sin_categoria';
-};
 
 /**
  * Analyzes temporal spending trend over months
