@@ -9,8 +9,8 @@ const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
 
-// FIX [C-03]: Usar fuente única de verdad — transaction.constants.js
-// Antes: enums hardcodeados localmente, desincronizados del sistema
+// Constants centralizadas en transaction.constants.js para evitar duplicación
+// y desincronización de enums entre múltiples archivos
 const {
     TIPOS_BASE_ARRAY,
     ESTADOS_PERSONALES_ARRAY,
@@ -220,13 +220,12 @@ const personalFinanceSchema = new Schema({
     toObject: { getters: true, virtuals: true }
 });
 
-
 personalFinanceSchema.index({ userId: 1, estado: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, tipo: 1, fecha: -1 });
 personalFinanceSchema.index({ userId: 1, categoria: 1 });
 personalFinanceSchema.index({ userId: 1, estado: 1 });
-// FIX: Index for analytics queries filtering internal transfers
+// Índice compuesto para queries de analytics que filtran transferencias internas
 personalFinanceSchema.index({ userId: 1, estado: 1, esTransferenciaInterna: 1, fecha: -1 });
 // NOTE: Multikey index - use only if filtering by tags is frequent
 personalFinanceSchema.index({ location: '2dsphere' });

@@ -2,21 +2,14 @@
  * @file auth.middleware.js
  * @description JWT lifecycle: firmar, verificar, rotar y guardar en cookie httpOnly.
  *
- * CORRECCIONES RESPECTO A LA VERSIÓN ANTERIOR:
- *
- * [BUG-04 FIX] protect() ahora valida que el token fue emitido DESPUÉS
- *   del último cambio de contraseña. Un cambio de contraseña invalida
- *   todos los tokens anteriores — crítico en sistemas financieros.
- *
- * [BUG-05 FIX] protect() carga el usuario desde DB para verificar
- *   passwordChangedAt, isActive y isDeleted en cada request protegido.
- *   Es un overhead de ~1ms de DB, pero es el único mecanismo real de
- *   revocación de tokens sin blacklist.
- *
- * NOTA sobre BUG-05 (Refresh token sin revocación):
- *   La solución completa requiere Redis para blacklist de jti.
- *   Se documenta el patrón aquí — la implementación depende de la
- *   infraestructura disponible.
+ * Diseño de seguridad:
+ *   - Revocación de tokens: protect() valida que el token fue emitido después del
+ *     último cambio de contraseña. Cualquier cambio invalida todos los tokens previos.
+ *   - Verificación de estado: en cada request protegido se carga el usuario desde DB
+ *     para verificar isActive e isDeleted (~1ms overhead). Esto proporciona revocación
+ *     inmediata sin necesidad de blacklist.
+ *   - Blacklist de tokens (opcional): la verificación de jti en Redis permite revocar
+ *     tokens específicos (logout forzado, tokens robados).
  *
  * Variables de entorno requeridas:
  *   JWT_SECRET          - Secret para access tokens.
@@ -27,13 +20,10 @@
 
 'use strict';
 
-// FIX [C-04]: Delegar operaciones JWT a JwtUtils — misma API pública, sin circular dep.
+// JwtUtils centraliza las operaciones JWT evitando dependencias circulares
 const JwtUtils     = require('../utils/jwt.utils');
 const { AppError } = require('./error.middleware');
 const redisService = require('../services/redis.service');
-
-// ─── AuthMiddleware ───────────────────────────────────────────────────────────
-// La sección de configuración JWT (secrets, validation) se movió a jwt.utils.js.
 
 // ─── AuthMiddleware ───────────────────────────────────────────────────────────
 
@@ -49,11 +39,7 @@ class AuthMiddleware {
      */
     static signAccessToken(payload) {
         AuthMiddleware._assertPayload(payload);
-        return jwt.sign(
-            { ...payload, type: 'access' },
-            ACCESS_SECRET,
-            { expiresIn: ACCESS_EXPIRES, algorithm: 'HS256', issuer: process.env.JWT_ISSUER || 'api' }
-        );
+        return JwtUtils.signAccessToken(payload);
     }
 
     /**
@@ -65,11 +51,7 @@ class AuthMiddleware {
      */
     static signRefreshToken(payload) {
         AuthMiddleware._assertPayload(payload);
-        return jwt.sign(
-            { ...payload, type: 'refresh' },
-            REFRESH_SECRET,
-            { expiresIn: REFRESH_EXPIRES, algorithm: 'HS256', issuer: process.env.JWT_ISSUER || 'api' }
-        );
+        return JwtUtils.signRefreshToken(payload);
     }
 
     /**
@@ -95,15 +77,7 @@ class AuthMiddleware {
      * @throws {AppError} 401 si inválido o expirado.
      */
     static verifyAccessToken(token) {
-        try {
-            const decoded = jwt.verify(token, ACCESS_SECRET, { algorithms: ['HS256'] });
-            if (decoded.type !== 'access') throw AppError.unauthorized('Tipo de token inválido');
-            return decoded;
-        } catch (err) {
-            if (err instanceof AppError) throw err;
-            if (err.name === 'TokenExpiredError')  throw AppError.unauthorized('Token expirado');
-            throw AppError.unauthorized('Token inválido');
-        }
+        return JwtUtils.verifyAccessToken(token);
     }
 
     /**
@@ -114,39 +88,30 @@ class AuthMiddleware {
      * @throws {AppError} 401 si inválido o expirado.
      */
     static verifyRefreshToken(token) {
-        try {
-            const decoded = jwt.verify(token, REFRESH_SECRET, { algorithms: ['HS256'] });
-            if (decoded.type !== 'refresh') throw AppError.unauthorized('Tipo de token inválido');
-            return decoded;
-        } catch (err) {
-            if (err instanceof AppError) throw err;
-            if (err.name === 'TokenExpiredError')  throw AppError.unauthorized('Refresh token expirado');
-            throw AppError.unauthorized('Refresh token inválido');
-        }
+        return JwtUtils.verifyRefreshToken(token);
     }
 
     // ── Guard middlewares de Express ──────────────────────────────────────────
 
     /**
-     * FIX [BUG-04]: Protege una ruta — requiere access token válido.
+     * Protege una ruta — requiere access token válido.
      *
-     * Verifica en orden:
+     * Verificación en orden:
      *   1. Presencia del token en Authorization header o cookie.
      *   2. Firma y expiración del JWT.
-     *   3. Que el usuario sigue activo en DB (no eliminado, no desactivado).
-     *   4. Que el token fue emitido DESPUÉS del último cambio de contraseña.
-     *      Esto invalida tokens anteriores cuando el usuario cambia su password.
+     *   3. Estado del usuario en DB (isActive, isDeleted).
+     *   4. Que el token fue emitido después del último cambio de contraseña
+     *      (invalida tokens previos al cambiar password).
      *
-     * El paso 3-4 requiere una DB query (~1ms). Es el único mecanismo real
-     * de revocación sin implementar una blacklist en Redis.
+     * Las verificaciones 3-4 requieren DB query (~1ms) pero permiten revocación
+     * inmediata sin blacklist en Redis.
      *
      * Adjunta req.user = { userId, email, roles, iat, exp }
      *
      * Usage:
      *   router.get('/profile', AuthMiddleware.protect, controller.getProfile);
      */
-    // FIX [C-05 / M-03]: protect() ahora es async y verifica Redis blacklist.
-    // Los tokens con jti en la blacklist son rechazados inmediatamente,
+    // Redis blacklist: tokens con jti en la lista son rechazados inmediatamente,
     // incluso si la firma JWT sigue siendo válida (tokens robados / logout forzado).
     static async protect(req, res, next) {
         try {
@@ -157,7 +122,7 @@ class AuthMiddleware {
 
             const decoded = JwtUtils.verifyAccessToken(token);
 
-            // FIX [C-05]: Verificar blacklist Redis si el token tiene jti
+            // Verificación de Redis blacklist para tokens con jti
             if (decoded.jti) {
                 const blacklisted = await redisService.isTokenBlacklisted(decoded.jti);
                 if (blacklisted) {

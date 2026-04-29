@@ -4,11 +4,9 @@
  * @file personalFinance.service.js
  * @description Capa de negocio para finanzas personales.
  *
- * FIX [C-06/R-01]: Extrae la lógica que estaba en personalFinance.controller
- * (getCompletedTransactions, normalizeTransactionAmounts, handleError) a esta
- * capa de servicio, dejando el controller como un coordinador delgado.
- *
- * Patrón: controller → service → model (igual que businessFinance y auth).
+ * Arquitectura: controller → service → model (consistente con businessFinance y auth).
+ * El controller actúa como coordinador delgado, delegando toda la lógica de negocio
+ * a esta capa de servicio.
  */
 
 const mongoose       = require('mongoose');

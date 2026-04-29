@@ -67,7 +67,6 @@ const logAccess = (req, res, next) => {
 const queryLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
-    // FIX [I-04]: req.user.id no existe — el payload usa req.user.userId
     keyGenerator: (req) => req.user?.userId || req.ip,
     standardHeaders: true,
     legacyHeaders: false,
@@ -83,7 +82,7 @@ const queryLimiter = rateLimit({
 const burstLimiter = rateLimit({
     windowMs: 10 * 1000,
     max: 5,
-    keyGenerator: (req) => req.user?.userId || req.ip, // FIX [I-04]
+    keyGenerator: (req) => req.user?.userId || req.ip, // Se usa userId del token para rate limiting
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false

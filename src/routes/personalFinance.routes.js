@@ -4,10 +4,6 @@
  * @file personalFinance.routes.js
  * @description Rutas de finanzas personales.
  *
- * FIX [C-07/R-06]: Conectados los schemas Zod de validate.middleware en POST/PUT.
- * FIX [R-14]:      Reemplazado validateObjectId inline por middleware compartido.
- * FIX [R-17]:      logAccess consolidado como middleware local hasta extraer a logger.utils.
- *
  * Rate limiting:
  *   - Endpoints AI (analysis, prediction, simulation): burst + rate limiters.
  *   - CRUD básico: sin rate limit adicional (el authMiddleware ya protege).
@@ -28,7 +24,7 @@ const { validateObjectId }            = require('../middlewares/validateObjectId
 const aiLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
-    keyGenerator: (req) => req.user?.userId || req.ip, // FIX [I-04]: userId no id
+    keyGenerator: (req) => req.user?.userId || req.ip, // Se usa userId del token, no el id de la query
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Límite de peticiones alcanzado. Intenta de nuevo en un minuto.' }
@@ -38,7 +34,7 @@ const aiLimiter = rateLimit({
 const burstLimiter = rateLimit({
     windowMs: 10 * 1000,
     max: 5,
-    keyGenerator: (req) => req.user?.userId || req.ip, // FIX [I-04]
+    keyGenerator: (req) => req.user?.userId || req.ip, // Se usa userId del token para rate limiting
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false,
@@ -58,12 +54,12 @@ router.get('/simulation', burstLimiter, aiLimiter, financeController.getSimulati
 
 router.get('/',  financeController.getAllFinances);
 
-// FIX [C-07/R-06]: validate(schemas.personalFinance.create) conectado
+// Validación de schema Zod para creación de transacciones
 router.post('/', validate(schemas.personalFinance.create), financeController.createFinance);
 
 router.get('/:id',    validateObjectId(), financeController.getFinanceById);
 
-// FIX [C-07/R-06]: validate(schemas.personalFinance.update) conectado
+// Validación de schema Zod para actualización de transacciones
 router.put('/:id',    validateObjectId(), validate(schemas.personalFinance.update), financeController.updateFinance);
 router.delete('/:id', validateObjectId(), financeController.deleteFinance);
 

@@ -67,8 +67,8 @@ class UserService {
             User.countDocuments(query),
         ]);
 
-        // FIX [I-07]: lean() retorna POJOs — NO tienen .toJSON().
-        // Aplicar la misma allowlist que el transform de toJSON del schema.
+        // lean() retorna POJOs sin métodos de Mongoose como .toJSON()
+        // Se aplica la misma allowlist que el transform de toJSON del schema
         const serialize = (u) => ({
             id:              u._id,
             name:            u.name,
