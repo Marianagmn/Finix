@@ -80,142 +80,128 @@ const calcularFrecuenciaMediana = (fechas) => {
  * @param {Array} data - Array of PersonalFinance documents
  * @returns {Object} Prediction with trend analysis and volatility metrics
  */
-exports.predict = (data) => {
-    // Defensive: validate input
-    if (!Array.isArray(data) || data.length < 2) {
+/**
+ * Predicts next expense with time-series analysis using MongoDB aggregation
+ * Optimized for large datasets - processes only last 1000 transactions in DB
+ * @param {string} userId - User ID for filtering
+ * @returns {Object} Prediction with trend analysis and volatility metrics
+ */
+exports.predict = async (userId) => {
+    const PersonalFinance = require('../models/personalFinance.model');
+
+    // Aggregation pipeline for efficient calculation
+    const pipeline = [
+        {
+            $match: {
+                userId,
+                estado: ESTADOS.COMPLETADO,
+                tipo: TIPOS.GASTO,
+                monto: { $gt: 0 }
+            }
+        },
+        {
+            $sort: { fecha: -1 }
+        },
+        {
+            $limit: 1000  // Only last 1000 transactions for performance
+        },
+        {
+            $sort: { fecha: 1 }  // Re-sort ascending for time analysis
+        },
+        {
+            $group: {
+                _id: null,
+                transactions: {
+                    $push: {
+                        monto: '$monto',
+                        fecha: '$fecha'
+                    }
+                },
+                total: { $sum: '$monto' },
+                count: { $sum: 1 },
+                minMonto: { $min: '$monto' },
+                maxMonto: { $max: '$monto' },
+                firstDate: { $first: '$fecha' },
+                lastDate: { $last: '$fecha' }
+            }
+        },
+        {
+            $project: {
+                transactions: 1,
+                promedio: { $divide: ['$total', '$count'] },
+                count: 1,
+                minMonto: 1,
+                maxMonto: 1,
+                firstDate: 1,
+                lastDate: 1
+            }
+        }
+    ];
+
+    const result = await PersonalFinance.aggregate(pipeline);
+
+    if (!result || result.length === 0 || result[0].count < 2) {
         return {
             success: false,
             message: 'Datos insuficientes para predicción'
         };
     }
 
-    // Create copy to avoid mutating original array
-    const sorted = [...data].sort(
-        (a, b) => new Date(a.fecha) - new Date(b.fecha)
-    );
+    const data = result[0];
+    const transactions = data.transactions;
 
-    const gastos = [];
+    // Calculate time-based metrics
+    const timestamps = transactions.map(t => new Date(t.fecha).getTime());
+    const montos = transactions.map(t => t.monto);
 
-    for (const item of sorted) {
-        // Filter: only completed expenses
-        if (
-            item.estado !== ESTADOS.COMPLETADO ||
-            item.tipo !== TIPOS.GASTO
-        ) {
-            continue;
-        }
+    const frecuenciaDias = calcularFrecuenciaMediana(transactions.map(t => new Date(t.fecha)));
+    const diasDesdeUltimo = (new Date() - new Date(data.lastDate)) / (1000 * 60 * 60 * 24);
 
-        // Strict validation: reject non-numeric, negative, or zero amounts
-        const monto = Number(item.monto);
-        if (isNaN(monto) || monto <= 0) {
-            continue;
-        }
+    // Volatility calculation
+    const desviacion = calcularDesviacion(montos, data.promedio);
+    const coeficienteVariacion = data.promedio !== 0 ? (desviacion / data.promedio) * 100 : 0;
 
-        // Validate date
-        const fecha = new Date(item.fecha);
-        if (isNaN(fecha.getTime())) {
-            continue;
-        }
-
-        gastos.push({
-            monto,
-            fecha,
-            timestamp: fecha.getTime()
-        });
-    }
-
-    if (gastos.length === 0) {
-        return {
-            success: false,
-            message: 'No hay gastos válidos para analizar'
-        };
-    }
-
-    // Core metrics
-    const montos = gastos.map(g => g.monto);
-    const timestamps = gastos.map(g => g.timestamp);
-    const fechas = gastos.map(g => g.fecha);
-    const total = montos.reduce((acc, m) => acc + m, 0);
-    const promedio = total / montos.length;
-    const ultimo = montos[montos.length - 1];
-
-    // Time-based analysis (using MEDIAN for robustness)
-    const frecuenciaDias = calcularFrecuenciaMediana(fechas);
-    const diasDesdeUltimo = (new Date() - fechas[fechas.length - 1]) / (1000 * 60 * 60 * 24);
-
-    // Volatility for outlier detection
-    const desviacion = calcularDesviacion(montos, promedio);
-    const umbralOutlier = promedio + 2 * desviacion;
-
-    // Filter outliers for robust regression (exclude extreme values)
-    const indicesValidos = montos
+    // Filter outliers for regression
+    const umbralOutlier = data.promedio + 2 * desviacion;
+    const validIndices = montos
         .map((m, i) => ({ monto: m, index: i }))
         .filter(item => item.monto <= umbralOutlier)
         .map(item => item.index);
 
-    const montosFiltrados = indicesValidos.map(i => montos[i]);
-    const timestampsFiltrados = indicesValidos.map(i => timestamps[i]);
+    const montosFiltrados = validIndices.map(i => montos[i]);
+    const timestampsFiltrados = validIndices.map(i => timestamps[i]);
 
-    // Real trend using linear regression on filtered data (robust to outliers)
+    // Linear regression on filtered data
     const pendientePorDia = calcularTendenciaRegresion(montosFiltrados, timestampsFiltrados);
+    const pendienteRelativa = pendientePorDia / (data.promedio + 1e-6);
 
-    // Epsilon prevents instability when promedio is very small
-    const epsilon = 1e-6;
-    const pendienteRelativa = pendientePorDia / (promedio + epsilon);
-
-    // Trend classification based on regression slope
     let tendencia = 'estable';
-    if (pendienteRelativa > 0.05) {
-        tendencia = 'aumento';
-    } else if (pendienteRelativa < -0.05) {
-        tendencia = 'disminucion';
-    }
+    if (pendienteRelativa > 0.05) tendencia = 'aumento';
+    else if (pendienteRelativa < -0.05) tendencia = 'disminucion';
 
-    // Volatility (standard deviation)
-    const coeficienteVariacion = promedio !== 0 ? (desviacion / promedio) * 100 : 0;
-
-    // Hybrid prediction model (ensemble approach)
-    // Combines: regression trend + moving average + recent value
-    const factorRegresion = 0.5;
-    const factorMedia = 0.3;
-    const factorReciente = 0.2;
-
-    // Moving average (simple)
+    // Ensemble prediction
+    const ultimo = montos[montos.length - 1];
     const mediaMovil = montos.length >= 3
         ? montos.slice(-3).reduce((a, b) => a + b, 0) / 3
-        : promedio;
+        : data.promedio;
 
-    // Base components
-    const valorRegresion = promedio + (pendientePorDia * (frecuenciaDias || 1));
-    const valorMedia = mediaMovil;
-    const valorReciente = ultimo;
+    const valorRegresion = data.promedio + (pendientePorDia * (frecuenciaDias || 1));
+    const estimado = 0.5 * valorRegresion + 0.3 * mediaMovil + 0.2 * ultimo;
 
-    // Weighted ensemble
-    const estimado = 
-        factorRegresion * valorRegresion +
-        factorMedia * valorMedia +
-        factorReciente * valorReciente;
-
-    // Limit prediction growth to prevent absurd values (max 50% change from average)
-    const maxCambio = promedio * 0.5;
+    const maxCambio = data.promedio * 0.5;
     const estimadoLimitado = Math.max(
-        promedio - maxCambio,
-        Math.min(estimado, promedio + maxCambio)
+        data.promedio - maxCambio,
+        Math.min(estimado, data.promedio + maxCambio)
     );
 
-    // Predict when next expense will occur (based on median frequency)
     const diasHastaProximo = Math.max(0, frecuenciaDias - diasDesdeUltimo);
-
-    // Stability indicator (not statistical confidence, but volatility-based reliability)
     const nivelEstabilidad = Math.max(0, 100 - coeficienteVariacion);
-
-    // Anomaly detection: last expense unusually high (using original desviacion)
     const esAnomalia = ultimo > umbralOutlier;
 
     return {
         success: true,
         data: {
-            promedioGasto: promedio,
+            promedioGasto: data.promedio,
             ultimoGasto: ultimo,
             tendencia,
             proximoGastoEstimado: Math.max(0, estimadoLimitado),
@@ -228,7 +214,7 @@ exports.predict = (data) => {
             tiempo: {
                 frecuenciaDias: Math.round(frecuenciaDias * 10) / 10,
                 diasDesdeUltimo: Math.round(diasDesdeUltimo * 10) / 10,
-                totalTransacciones: gastos.length
+                totalTransacciones: data.count
             },
             volatilidad: {
                 desviacionEstandar: Math.round(desviacion * 100) / 100,
@@ -238,7 +224,7 @@ exports.predict = (data) => {
                 pendientePorDia: Math.round(pendientePorDia * 100) / 100,
                 direccion: tendencia
             },
-            alertas: generarAlertas(promedio, ultimo, tendencia, coeficienteVariacion, diasDesdeUltimo, esAnomalia)
+            alertas: generarAlertas(data.promedio, ultimo, tendencia, coeficienteVariacion, diasDesdeUltimo, esAnomalia)
         }
     };
 };

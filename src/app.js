@@ -20,6 +20,7 @@ const cookieParser = require('cookie-parser');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 const { errorHandler } = require('./middlewares/error.middleware');
+const { requestLoggerMiddleware } = require('./utils/logger.utils');
 
 // ─── Crear aplicación Express ─────────────────────────────────────────────────
 
@@ -38,6 +39,9 @@ app.use(express.json({ limit: '10kb' }));
 
 // Parsear cookies
 app.use(cookieParser());
+
+// Logger de requests
+app.use(requestLoggerMiddleware);
 
 // ─── Documentación Swagger ────────────────────────────────────────────────────
 

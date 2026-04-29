@@ -210,17 +210,7 @@ class PersonalFinanceService {
      * Predicción del próximo gasto usando regresión lineal + ensemble.
      */
     static async getPrediction(userId) {
-        const data = await PersonalFinanceService._getCompletedTransactions(userId);
-
-        if (data === null) {
-            // Para datasets grandes, retornar indicación de uso de aggregation
-            return {
-                success: false,
-                message: 'Dataset demasiado grande para predicción en memoria. Use el endpoint de análisis agregado.'
-            };
-        }
-
-        return predictionService.predict(data);
+        return predictionService.predict(userId);
     }
 
     /**

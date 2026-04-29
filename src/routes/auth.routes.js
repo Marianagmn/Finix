@@ -75,6 +75,40 @@ const refreshLimiter = rateLimit({
 
 // ─── Rutas públicas ───────────────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: Registrar nuevo usuario
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - passwordConfirm
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *               passwordConfirm:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Usuario registrado exitosamente
+ *       400:
+ *         description: Datos inválidos
+ */
 router.post(
     '/register',
     registerLimiter,              // 1. Limita por IP
@@ -84,6 +118,50 @@ router.post(
     //       El pre-save hook del modelo hashea el texto plano.
 );
 
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Iniciar sesión
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login exitoso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       $ref: '#/components/schemas/User'
+ *                     accessToken:
+ *                       type: string
+ *                     refreshToken:
+ *                       type: string
+ *       401:
+ *         description: Credenciales inválidas
+ */
 router.post(
     '/login',
     loginLimiter,                 // 1. Limita por IP

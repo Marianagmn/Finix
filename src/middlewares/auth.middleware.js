@@ -24,6 +24,13 @@
 const JwtUtils     = require('../utils/jwt.utils');
 const { AppError } = require('./error.middleware');
 const redisService = require('../services/redis.service');
+const jwt = require('jsonwebtoken');
+
+// Constantes de configuración
+const ACCESS_SECRET = process.env.JWT_SECRET;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const ACCESS_EXPIRES = process.env.JWT_EXPIRES_IN || '15m';
+const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 
 // ─── AuthMiddleware ───────────────────────────────────────────────────────────
 
@@ -267,6 +274,17 @@ class AuthMiddleware {
         if (!payload || typeof payload !== 'object' || !payload.userId) {
             throw AppError.internal('El payload del token debe incluir userId');
         }
+    }
+
+    /**
+     * Middleware para requerir businessId en req.user.
+     * Debe usarse DESPUÉS de AuthMiddleware.protect.
+     */
+    static requireBusinessId(req, res, next) {
+        if (!req.user?.businessId) {
+            return next(AppError.forbidden('Acceso denegado: se requiere un negocio válido'));
+        }
+        next();
     }
 }
 

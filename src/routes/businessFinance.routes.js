@@ -108,6 +108,9 @@ const validateObjectId = (...params) => (req, res, next) => {
 // Todas las rutas requieren autenticación
 router.use(AuthMiddleware.protect);
 
+// Todas las rutas requieren businessId válido
+router.use(AuthMiddleware.requireBusinessId);
+
 // ─── Consultas especiales (antes de /:id para evitar conflictos de path) ──────
 
 // GET /api/business-finance/approvals/pending

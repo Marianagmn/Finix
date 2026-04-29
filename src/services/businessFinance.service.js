@@ -17,23 +17,9 @@ const mongoose       = require('mongoose');
 const BusinessFinance = require('../models/businessFinance.model');
 const { AppError }   = require('../middlewares/error.middleware');
 const Pagination     = require('../utils/pagination.utils');
-const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
-const { normalizeAmounts: normalizeAmountsFromUtils, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
+const { normalizeAmounts, BUSINESS_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Normaliza montos desde centavos a moneda real
- * El modelo almacena en centavos (set: v => v * 100) pero lean() no aplica getters
- * @param {Array} items - Items desde lean()
- * @returns {Array} Items con montos normalizados
- */
-const normalizeAmounts = (items) => {
-    if (!Array.isArray(items)) return items;
-    // FIX [I-02]: Delegado a money.utils para evitar duplicar la lógica
-    const { normalizeAmounts: norm, BUSINESS_FINANCE_MONEY_FIELDS: FIELDS } = require('../utils/money.utils');
-    return norm(items, FIELDS);
-};
 
 // Campos que se permiten actualizar en un borrador
 const UPDATABLE_FIELDS = [
@@ -118,7 +104,7 @@ class BusinessFinanceService {
         ]);
 
         // Normalización de montos: el modelo almacena en centavos pero lean() no aplica getters
-        return { items: normalizeAmounts(items), total };
+        return { items: normalizeAmounts(items, BUSINESS_FINANCE_MONEY_FIELDS), total };
     }
 
     /**
@@ -412,7 +398,7 @@ class BusinessFinanceService {
         ]);
 
         // Normalización de montos: el modelo almacena en centavos pero lean() no aplica getters
-        return { items: normalizeAmounts(items), total };
+        return { items: normalizeAmounts(items, BUSINESS_FINANCE_MONEY_FIELDS), total };
     }
 
     /**
@@ -445,7 +431,7 @@ class BusinessFinanceService {
         ]);
 
         // Normalización de montos: el modelo almacena en centavos pero lean() no aplica getters
-        return { items: normalizeAmounts(items), total };
+        return { items: normalizeAmounts(items, BUSINESS_FINANCE_MONEY_FIELDS), total };
     }
 }
 
