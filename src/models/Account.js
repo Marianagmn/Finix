@@ -2,8 +2,6 @@
  * Account Model
  * Represents a financial account (wallet, bank, credit, investment)
  * Supports multi-currency balances with automatic decimal handling
- *
- * FIX [C-02]: Aplicado softDelete.plugin en lugar de implementación manual.
  * El plugin añade: isDeleted, deletedAt, deletedBy, softDelete(),
  * pre-find y pre-aggregate hooks de forma consistente con todos los modelos.
  *

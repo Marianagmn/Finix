@@ -2,8 +2,6 @@
  * @file auth.controller.js
  * @description Controllers de autenticación — delegan lógica a AuthService.
  *
- * FIX [P-05 / P-06]: Controller thin — solo parsea request, llama service, formatea response.
- */
 
 'use strict';
 

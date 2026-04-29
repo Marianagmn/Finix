@@ -2,9 +2,6 @@
  * Category Model
  * Transaction classification system per user
  * Enforces unique category names per user for consistent reporting
- *
- * FIX [C-02]: Aplicado softDelete.plugin en lugar de implementación manual.
- *
  * @module models/Category
  */
 

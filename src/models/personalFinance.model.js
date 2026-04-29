@@ -9,7 +9,6 @@ const mongoose = require('mongoose');
 
 const { Schema } = mongoose;
 
-// FIX [C-03]: Usar fuente única de verdad — transaction.constants.js
 // Antes: enums hardcodeados localmente, desincronizados del sistema
 const {
     TIPOS_BASE_ARRAY,

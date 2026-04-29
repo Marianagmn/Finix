@@ -3,8 +3,6 @@
 /**
  * @file account.service.js
  * @description Capa de negocio para cuentas financieras.
- *
- * FIX [C-06/R-08]: Extrae la lógica que estaba inline en account.routes.js.
  * Patrón: controller (route handler) → service → model.
  */
 

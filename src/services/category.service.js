@@ -4,7 +4,6 @@
  * @file category.service.js
  * @description Capa de negocio para categorías de transacciones.
  *
- * FIX [C-06/R-08]: Extrae la lógica inline de category.routes.js.
  */
 
 const Category     = require('../models/Category');

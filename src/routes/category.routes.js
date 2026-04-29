@@ -4,8 +4,6 @@
  * @file category.routes.js
  * @description CRUD de categorías de transacciones.
  *
- * FIX [C-06/R-08]: Lógica movida a CategoryService.
- * FIX [R-14]:      Usa validateObjectId middleware compartido.
  */
 
 const express     = require('express');

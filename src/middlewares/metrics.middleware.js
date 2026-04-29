@@ -79,10 +79,6 @@ const getMetrics = (req, res) => {
     const avgResponseTime = metrics.responseTimes.length > 0
         ? metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length
         : 0;
-
-    // FIX [I-06]: [...arr].sort() para no mutar el array original.
-    // metrics.responseTimes.sort() muta en-place — corrompe el orden cronológico
-    // y el cálculo del avg en la siguiente llamada.
     const sorted = [...metrics.responseTimes].sort((a, b) => a - b);
     const p95ResponseTime = sorted.length > 0
         ? sorted[Math.floor(sorted.length * 0.95)]

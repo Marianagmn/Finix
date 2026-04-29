@@ -2,21 +2,6 @@
  * @file auth.middleware.js
  * @description JWT lifecycle: firmar, verificar, rotar y guardar en cookie httpOnly.
  *
- * CORRECCIONES RESPECTO A LA VERSIÓN ANTERIOR:
- *
- * [BUG-04 FIX] protect() ahora valida que el token fue emitido DESPUÉS
- *   del último cambio de contraseña. Un cambio de contraseña invalida
- *   todos los tokens anteriores — crítico en sistemas financieros.
- *
- * [BUG-05 FIX] protect() carga el usuario desde DB para verificar
- *   passwordChangedAt, isActive y isDeleted en cada request protegido.
- *   Es un overhead de ~1ms de DB, pero es el único mecanismo real de
- *   revocación de tokens sin blacklist.
- *
- * NOTA sobre BUG-05 (Refresh token sin revocación):
- *   La solución completa requiere Redis para blacklist de jti.
- *   Se documenta el patrón aquí — la implementación depende de la
- *   infraestructura disponible.
  *
  * Variables de entorno requeridas:
  *   JWT_SECRET          - Secret para access tokens.
@@ -108,7 +93,6 @@ class AuthMiddleware {
     // ── Guard middlewares de Express ──────────────────────────────────────────
 
     /**
-     * FIX [BUG-04]: Protege una ruta — requiere access token válido.
      *
      * Verifica en orden:
      *   1. Presencia del token en Authorization header o cookie.
@@ -125,7 +109,6 @@ class AuthMiddleware {
      * Usage:
      *   router.get('/profile', AuthMiddleware.protect, controller.getProfile);
      */
-    // FIX [C-05 / M-03]: protect() ahora es async y verifica Redis blacklist.
     // Los tokens con jti en la blacklist son rechazados inmediatamente,
     // incluso si la firma JWT sigue siendo válida (tokens robados / logout forzado).
     static async protect(req, res, next) {
@@ -136,8 +119,6 @@ class AuthMiddleware {
             }
 
             const decoded = JwtUtils.verifyAccessToken(token);
-
-            // FIX [C-05]: Verificar blacklist Redis si el token tiene jti
             if (decoded.jti) {
                 const blacklisted = await redisService.isTokenBlacklisted(decoded.jti);
                 if (blacklisted) {

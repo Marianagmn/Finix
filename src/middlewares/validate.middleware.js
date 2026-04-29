@@ -7,9 +7,6 @@
  *  - Schema reutilizable entre frontend y backend.
  *  - API declarativa más limpia que chains de .isEmail().isLength().
  *
- * FIX [P-02]: Reemplaza los if (!email || !password) de los controllers.
- *   Un payload { "email": {"$gt": ""} } llegaba sin sanitizar (NoSQL injection).
- *   Los schemas de Zod garantizan que solo strings válidos lleguen al controller.
  *
  * Instalación: npm install zod
  */

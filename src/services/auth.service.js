@@ -2,8 +2,6 @@
  * @file auth.service.js
  * @description Capa de servicio para autenticación — toda la lógica de negocio vive aquí.
  *
- * FIX [P-05 / P-06]: Extrae la lógica de negocio del controller y del modelo.
- *
  * Antes:
  *   - auth.controller.js hacía queries + lógica de negocio + formateo de respuesta.
  *   - user.js tenía métodos de instancia con lógica de negocio acoplada al documento.
@@ -30,8 +28,6 @@ class AuthService {
 
     /**
      * Registra un nuevo usuario.
-     *
-     * FIX [BUG-02]: Elimina el patrón findOne + create (TOCTOU).
      * Ahora intenta crear directamente y captura el error 11000 del índice
      * unique — esto es atómico por diseño de MongoDB.
      *

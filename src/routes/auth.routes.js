@@ -2,16 +2,6 @@
  * @file auth.routes.js
  * @description Router de autenticación con rate limiting, validación y guards.
  *
- * FIX [P-01]: Rate limiting aplicado en endpoints de autenticación.
- *   - /login:    15 intentos / 15 minutos por IP
- *   - /register: 5 registros / hora por IP
- *   Sin esto, credential stuffing y registro masivo no tienen fricción.
- *
- * FIX [P-02]: validate(schema) reemplaza los if (!email || !password) de los controllers.
- *   Inputs sanitizados y tipados antes de llegar al controller.
- *
- * FIX [BUG-01]: Se eliminó BcryptMiddleware.hashPasswordMiddleware de las rutas.
- *   El hashing ocurre solo en el pre-save hook del modelo.
  *
  * Montar en app.js:
  *   app.use('/api/auth', require('./auth.routes'));

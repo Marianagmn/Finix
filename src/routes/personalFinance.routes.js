@@ -4,10 +4,7 @@
  * @file personalFinance.routes.js
  * @description Rutas de finanzas personales.
  *
- * FIX [C-07/R-06]: Conectados los schemas Zod de validate.middleware en POST/PUT.
- * FIX [R-14]:      Reemplazado validateObjectId inline por middleware compartido.
- * FIX [R-17]:      logAccess consolidado como middleware local hasta extraer a logger.utils.
- *
+
  * Rate limiting:
  *   - Endpoints AI (analysis, prediction, simulation): burst + rate limiters.
  *   - CRUD básico: sin rate limit adicional (el authMiddleware ya protege).

@@ -2,27 +2,6 @@
  * @file user.js
  * @description Mongoose User model — schema, validaciones, hooks y helpers de instancia.
  *
- * CORRECCIONES RESPECTO A LA VERSIÓN ANTERIOR:
- *
- * [BUG-01 FIX] Double-hashing eliminado.
- *   El pre-save hook es el ÚNICO punto de hashing. Se eliminó el middleware
- *   de pre-hashing en rutas. Mongoose marca isModified('password') === true
- *   en documentos nuevos para TODOS los campos, lo que causaba bcrypt(bcrypt(pass)).
- *
- * [BUG-03 FIX] Race condition en loginAttempts eliminada.
- *   registerFailedLogin / registerSuccessfulLogin usan findOneAndUpdate con
- *   operadores $inc/$set atómicos, no read-modify-save sobre el documento en memoria.
- *
- * [BUG-04 FIX] isTokenValidAfterPasswordChange documentado aquí;
- *   se invoca en AuthMiddleware.protect().
- *
- * [P-03 FIX] minlength removido del campo password en el schema.
- *   El schema recibe el hash (60 chars), no el texto plano. La política de
- *   contraseñas la aplica PasswordUtils.validate() antes del hashing.
- *
- * [P-09 FIX] Índice duplicado en email corregido.
- *   Un único índice compuesto con partialFilterExpression satisface todas
- *   las queries de autenticación sin duplicar el índice.
  */
 
 'use strict';
@@ -30,14 +9,12 @@
 const mongoose       = require('mongoose');
 const { Schema }     = mongoose;
 const PasswordUtils  = require('../utils/password.utils');
-// FIX [C-04]: Usar JwtUtils en lugar de AuthMiddleware para romper dependencia circular.
 // Antes: User.js → AuthMiddleware → (lazy) User.js
 // Ahora: User.js → JwtUtils (sin circular)
 const JwtUtils       = require('../utils/jwt.utils');
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-// FIX [M-05]: Agregar roles aprobador y contador — requeridos en businessFinance.routes.js
 // Sin esto, AuthMiddleware.requireRole('aprobador','contador') siempre devuelve 403.
 const ROLES     = ['user', 'admin', 'superadmin', 'aprobador', 'contador'];
 const PROVIDERS = ['local', 'google', 'github'];
@@ -52,7 +29,7 @@ const userSchema = new Schema({
     // ── Identidad ─────────────────────────────────────────────────────────────
 
     name: {
-        // FIX naming: 'nombre' mezclaba idiomas — se unifica en inglés
+      
         type:      String,
         trim:      true,
         maxlength: [100, 'El nombre no puede superar 100 caracteres'],
@@ -61,8 +38,7 @@ const userSchema = new Schema({
     email: {
         type:      String,
         required:  [true, 'El email es obligatorio'],
-        // FIX: unique e index se definen en userSchema.index() abajo,
-        // no en el campo, para evitar crear dos índices sobre el mismo campo.
+     
         lowercase: true,
         trim:      true,
         match:     [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Formato de email inválido'],
@@ -72,11 +48,7 @@ const userSchema = new Schema({
 
     password: {
         type:   String,
-        // FIX: 'required' removido — usuarios OAuth no tienen password local.
-        //      La validación condicional está en pre-validate hook.
-        // FIX: 'minlength' removido — el schema recibe el HASH (60 chars), no
-        //      el texto plano. minlength: 8 nunca fallaba (60 > 8 siempre).
-        //      PasswordUtils.validate() se encarga de la política real.
+      
         select: false,
     },
 
@@ -199,10 +171,6 @@ const userSchema = new Schema({
 
 // ─── Índices ──────────────────────────────────────────────────────────────────
 
-// FIX [P-09]: Un único índice compuesto con partialFilterExpression reemplaza:
-//   - el index: true en el campo email (que creaba un índice separado)
-//   - el unique: true en el campo email (que creaba otro índice)
-//   - el userSchema.index({ email: 1, isDeleted: 1 }) anterior
 // El índice resultante satisface findOne({ email }) y findOne({ email, isDeleted: false }).
 // La constraint unique aplica solo a documentos donde isDeleted: false.
 userSchema.index(
@@ -234,7 +202,6 @@ userSchema.pre('validate', function (next) {
 // ─── Pre-save: ÚNICO punto de hashing ────────────────────────────────────────
 
 /**
- * FIX [BUG-01]: Hashing centralizado en un solo lugar.
  *
  * Por qué no se hashea en la ruta (middleware) + aquí:
  *   En documentos nuevos, Mongoose.isModified() retorna true para TODOS
@@ -320,7 +287,6 @@ userSchema.statics.findByEmailForAuth = function (email) {
 };
 
 /**
- * FIX [BUG-03]: Registra intento fallido de login de forma ATÓMICA.
  *
  * Por qué no se usa this.loginAttempts++ + this.save():
  *   Bajo carga concurrente, 10 requests leen loginAttempts: 0, todos incrementan
@@ -346,7 +312,6 @@ userSchema.statics.registerFailedLogin = async function (userId) {
 };
 
 /**
- * FIX [BUG-03]: Limpia contadores de fuerza bruta de forma ATÓMICA.
  *
  * @param {string|ObjectId} userId
  * @param {string}          ip    - IP real del cliente (ver nota sobre trust proxy).

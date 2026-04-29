@@ -4,8 +4,6 @@
  * @file account.routes.js
  * @description CRUD de cuentas financieras.
  *
- * FIX [C-06/R-08]: Lógica movida a AccountService — routes solo coordinan.
- * FIX [R-14]:      Usa validateObjectId middleware compartido.
  */
 
 const express     = require('express');
