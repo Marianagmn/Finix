@@ -65,6 +65,6 @@ router.delete('/:id', validateObjectId(), financeController.deleteFinance);
 
 /**
  * Montar en app.js como:
- *   app.use('/api/v1/finances', require('./routes/personalFinance.routes'));
+ *   app.use('/api/personal-finance', require('./routes/personalFinance.routes'));
  */
 module.exports = router;
