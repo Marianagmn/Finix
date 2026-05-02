@@ -126,15 +126,14 @@ const personalFinanceSchema = new Schema({
     location: {
         type: {
             type: String,
-            enum: ['Point'],
-            default: 'Point'
+            enum: ['Point']
         },
         coordinates: {
             type: [Number],
             required: false,
             validate: {
                 validator: function(v) {
-                    if (!v) return true;
+                    if (!v || v.length === 0) return true;
                     return v.length === 2 &&
                         v[0] >= -180 && v[0] <= 180 &&
                         v[1] >= -90 && v[1] <= 90;
@@ -288,6 +287,11 @@ personalFinanceSchema.pre('aggregate', function(next) {
 });
 
 personalFinanceSchema.pre('save', function(next) {
+    // Limpieza de GeoJSON para evitar error "Can't extract geo keys"
+    if (this.location && (!this.location.coordinates || this.location.coordinates.length === 0)) {
+        this.location = undefined;
+    }
+
     if (!this.isModified()) return next();
 
     // Limit audit trail size (MongoDB 16MB doc limit)
