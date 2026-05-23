@@ -22,6 +22,7 @@ const swaggerSpec = require('./config/swagger');
 const { errorHandler } = require('./middlewares/error.middleware');
 const requestIdMiddleware = require('./middlewares/requestId.middleware');
 const { requestLoggerMiddleware } = require('./utils/logger.utils');
+const CsrfMiddleware = require('./middlewares/csrf.middleware');
 
 // ─── Crear aplicación Express ─────────────────────────────────────────────────
 
@@ -35,9 +36,21 @@ app.use(requestIdMiddleware);
 
 // Request ID ya aplicado arriba para máxima cobertura
 
-// CORS - permitir solicitudes cross-origin
+// CORS - permitir solicitudes cross-origin con whitelist estricta
+// SECURITY FIX: Never use '*' with credentials enabled
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:4200').split(',').map(o => o.trim());
+
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin(origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,  // Permitir cookies cross-origin
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -49,22 +62,31 @@ app.use(express.json({ limit: '10kb' }));
 // Parsear cookies
 app.use(cookieParser());
 
+// CSRF Protection - SECURITY FIX: Protect against CSRF attacks
+// Only enable in production or when explicitly enabled
+if (process.env.NODE_ENV === 'production' || process.env.ENABLE_CSRF === 'true') {
+    app.use(CsrfMiddleware.protect);
+}
+
 // Logger de requests
 app.use(requestLoggerMiddleware);
 
 // ─── Documentación Swagger ────────────────────────────────────────────────────
+// SECURITY FIX: Hide Swagger in production to prevent exposing API structure
 
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-    explorer: true,
-    customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'Finix API Documentation'
-}));
+if (process.env.NODE_ENV !== 'production') {
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+        explorer: true,
+        customCss: '.swagger-ui .topbar { display: none }',
+        customSiteTitle: 'Finix API Documentation'
+    }));
 
-// Endpoint para obtener spec JSON
-app.get('/api/docs.json', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(swaggerSpec);
-});
+    // Endpoint para obtener spec JSON
+    app.get('/api/docs.json', (req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.send(swaggerSpec);
+    });
+}
 
 // ─── Rutas de la API ───────────────────────────────────────────────────────────
 

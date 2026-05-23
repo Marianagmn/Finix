@@ -246,6 +246,8 @@ class AuthMiddleware {
             path:     '/api/auth',
             // Additional security flags
             domain:   process.env.COOKIE_DOMAIN || undefined, // Restrict to specific domain in production
+            // SECURITY FIX: Add additional security flags
+            priority: 'high', // High priority cookie
         });
     }
 

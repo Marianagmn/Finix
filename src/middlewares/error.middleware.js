@@ -82,13 +82,33 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
         console.error('[UNHANDLED ERROR]', err);
     }
 
-    res.status(error.statusCode).json({
-        success:    false,
-        code:       error.code,
-        message:    error.message,
-        // Expose stack only in development
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack }),
-    });
+    // SECURITY FIX: Never expose sensitive data in production
+    const isDevelopment = process.env.NODE_ENV === 'development';
+
+    const response = {
+        success: false,
+        code: error.code,
+        message: error.message,
+        requestId: req.id, // Include request ID for tracing
+    };
+
+    // Only expose stack traces in development
+    if (isDevelopment) {
+        response.stack = error.stack;
+    }
+
+    // Never expose internal error details in production
+    if (!isDevelopment) {
+        // Remove any potentially sensitive information from error message
+        if (error.message.includes('password') || 
+            error.message.includes('token') ||
+            error.message.includes('secret') ||
+            error.message.includes('key')) {
+            response.message = 'An internal error occurred';
+        }
+    }
+
+    res.status(error.statusCode).json(response);
 }
 
 /**
