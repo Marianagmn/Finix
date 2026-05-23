@@ -237,12 +237,15 @@ class AuthMiddleware {
      * @param {string}   refreshToken
      */
     static attachRefreshCookie(res, refreshToken) {
+        const isProduction = process.env.NODE_ENV === 'production';
         res.cookie('refreshToken', refreshToken, {
             httpOnly: true,
-            secure:   process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure:   isProduction, // HTTPS only in production
+            sameSite: isProduction ? 'strict' : 'lax', // Strict in production, lax for dev
             maxAge:   7 * 24 * 60 * 60 * 1000,
             path:     '/api/auth',
+            // Additional security flags
+            domain:   process.env.COOKIE_DOMAIN || undefined, // Restrict to specific domain in production
         });
     }
 

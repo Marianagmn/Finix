@@ -90,6 +90,13 @@ const userSchema = new Schema({
         default: ['user'],
     },
 
+    // Business association for enterprise finance features
+    businessId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Business',
+        select: false, // Only include when explicitly requested
+    },
+
     // ── Estado y seguridad ────────────────────────────────────────────────────
 
     isActive: {

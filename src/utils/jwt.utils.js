@@ -66,8 +66,14 @@ class JwtUtils {
      * @returns {{ accessToken: string, refreshToken: string }}
      */
     static generateTokenPair(userPayload) {
+        // Include businessId in access token if user has one (for enterprise features)
+        const accessPayload = {
+            ...userPayload,
+            businessId: userPayload.businessId || undefined
+        };
+
         return {
-            accessToken:  JwtUtils.signAccessToken(userPayload),
+            accessToken:  JwtUtils.signAccessToken(accessPayload),
             refreshToken: JwtUtils.signRefreshToken({ userId: userPayload.userId }),
         };
     }
