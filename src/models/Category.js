@@ -50,7 +50,8 @@ const categorySchema = new Schema({
 // ─── Indexes ─────────────────────────────────────────────────────────────────
 
 // Enforce unique category names per user (case-insensitive via lowercase)
-categorySchema.index({ userId: 1, nombre: 1 }, { unique: true });
+// Partial index: only applies to non-deleted records to allow recreation after soft-delete
+categorySchema.index({ userId: 1, nombre: 1 }, { unique: true, partialFilterExpression: { isDeleted: false } });
 
 // ─── Plugin (C-02 FIX) ────────────────────────────────────────────────────────
 categorySchema.plugin(softDeletePlugin);

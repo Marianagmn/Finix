@@ -17,6 +17,7 @@ const { AppError }   = require('../middlewares/error.middleware');
 const Pagination     = require('../utils/pagination.utils');
 const { normalizeAmounts, PERSONAL_FINANCE_MONEY_FIELDS } = require('../utils/money.utils');
 const { ESTADOS_PERSONALES } = require('../constants/transaction.constants');
+const AccountService = require('./account.service');
 
 const financeAnalysisService  = require('./financeAnalysis.service');
 const predictionService       = require('./prediction.service');
@@ -73,6 +74,7 @@ class PersonalFinanceService {
     /**
      * Crea una nueva transacción personal.
      * FIX [M-09]: Invalida caché de IA después de crear.
+     * FIX: Actualiza balances de cuentas según el tipo de transacción.
      */
     static async create(body, userId) {
         const data = PersonalFinanceService._pick(body, ALLOWED_FIELDS);
@@ -80,6 +82,9 @@ class PersonalFinanceService {
 
         const finance = new PersonalFinance({ ...data, userId });
         const saved   = await finance.save();
+
+        // Actualizar balances de cuentas según el tipo de transacción
+        await PersonalFinanceService._updateAccountBalances(saved, userId, 'create');
 
         // Invalidar caché de IA para este usuario
         await PersonalFinanceService._invalidateAICache(userId);
@@ -138,6 +143,7 @@ class PersonalFinanceService {
     /**
      * Actualiza una transacción existente.
      * FIX [M-09]: Invalida caché de IA después de actualizar.
+     * FIX: Actualiza balances de cuentas según el tipo de transacción.
      */
     static async update(id, userId, body) {
         const data = PersonalFinanceService._pick(body, ALLOWED_FIELDS);
@@ -146,8 +152,15 @@ class PersonalFinanceService {
         const finance = await PersonalFinance.findOne({ _id: id, userId });
         if (!finance) throw AppError.notFound('Registro financiero no encontrado');
 
+        // Guardar valores originales para revertir cambios en balances
+        const original = finance.toObject();
+
         Object.assign(finance, data);
         const updated = await finance.save();
+
+        // Actualizar balances de cuentas (revertir original, aplicar nuevo)
+        await PersonalFinanceService._updateAccountBalances(original, userId, 'delete');
+        await PersonalFinanceService._updateAccountBalances(updated, userId, 'create');
 
         // Invalidar caché de IA para este usuario
         await PersonalFinanceService._invalidateAICache(userId);
@@ -158,10 +171,15 @@ class PersonalFinanceService {
     /**
      * Soft-delete de una transacción.
      * FIX [M-09]: Invalida caché de IA después de eliminar.
+     * FIX: Revierte el efecto en los balances de cuentas.
      */
     static async softDelete(id, userId) {
         const finance = await PersonalFinance.findOne({ _id: id, userId });
         if (!finance) throw AppError.notFound('Registro financiero no encontrado');
+        
+        // Revertir el efecto en los balances antes de eliminar
+        await PersonalFinanceService._updateAccountBalances(finance, userId, 'delete');
+        
         await finance.softDelete(userId);
 
         // Invalidar caché de IA para este usuario
@@ -183,6 +201,39 @@ class PersonalFinanceService {
         } catch (err) {
             // No fallar si Redis no está disponible
             console.warn('[Cache] Error al invalidar caché:', err.message);
+        }
+    }
+
+    /**
+     * Actualiza los balances de cuentas según el tipo de transacción.
+     * @private
+     * @param {Object} transaction - Transacción personal
+     * @param {string} userId - ID del usuario
+     * @param {string} operation - 'create' para aplicar efecto, 'delete' para revertir
+     */
+    static async _updateAccountBalances(transaction, userId, operation) {
+        const multiplier = operation === 'create' ? 1 : -1;
+        const monto = transaction.monto * multiplier;
+
+        try {
+            if (transaction.tipo === 'ingreso' && transaction.cuentaDestinoId) {
+                // Ingreso: agregar al balance de la cuenta destino
+                await AccountService.updateBalance(transaction.cuentaDestinoId, userId, monto);
+            } else if (transaction.tipo === 'gasto' && transaction.cuentaOrigenId) {
+                // Gasto: restar del balance de la cuenta origen
+                await AccountService.updateBalance(transaction.cuentaOrigenId, userId, -monto);
+            } else if (transaction.tipo === 'transferencia') {
+                // Transferencia: restar de origen, agregar a destino
+                if (transaction.cuentaOrigenId) {
+                    await AccountService.updateBalance(transaction.cuentaOrigenId, userId, -monto);
+                }
+                if (transaction.cuentaDestinoId) {
+                    await AccountService.updateBalance(transaction.cuentaDestinoId, userId, monto);
+                }
+            }
+        } catch (err) {
+            // No fallar la transacción si la actualización de balance falla
+            console.warn('[Balance] Error al actualizar balance:', err.message);
         }
     }
 

@@ -73,6 +73,21 @@ class AccountService {
         if (!account) throw AppError.notFound('Cuenta no encontrada');
         await account.softDelete(userId);
     }
+
+    /**
+     * Actualiza el balance de una cuenta.
+     * @param {string} accountId - ID de la cuenta
+     * @param {string} userId - ID del usuario
+     * @param {number} amount - Cantidad a agregar (positivo) o restar (negativo)
+     */
+    static async updateBalance(accountId, userId, amount) {
+        const account = await Account.findOne({ _id: accountId, userId });
+        if (!account) throw AppError.notFound('Cuenta no encontrada');
+        
+        account.balance += amount;
+        await account.save();
+        return account.toObject();
+    }
 }
 
 module.exports = AccountService;
