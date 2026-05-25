@@ -73,7 +73,7 @@ const createPersonalFinanceSchema = z.object({
     monto: z.number({ required_error: 'Monto requerido' }).positive('El monto debe ser positivo'),
     moneda: z.enum(Object.values(MONEDAS)).default('COP'),
     tasaCambio: z.number().positive().optional(),
-    categoria: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de categoría inválido').optional(),
+    categoria: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de categoría inválido'),
     cuentaOrigenId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de cuenta inválido').optional(),
     cuentaDestinoId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de cuenta inválido').optional(),
     metodoPago: z.enum(Object.values(METODOS_PAGO)).default('efectivo'),
