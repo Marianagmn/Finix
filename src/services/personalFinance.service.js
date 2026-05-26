@@ -364,6 +364,93 @@ class PersonalFinanceService {
 
         return result;
     }
+
+    // ── Soft Delete / Restauración ────────────────────────────────────────────
+
+    /**
+     * Lista transacciones eliminadas (soft-deleted) del usuario.
+     * Usa paginación estándar con filtros opcionales.
+     */
+    static async listDeleted(userId, query = {}) {
+        const pager = Pagination.offset(query, {
+            defaultLimit: 20,
+            allowedSortFields: ['fecha', 'monto', 'createdAt'],
+        });
+
+        const filter = { userId, isDeleted: true };
+
+        // Filtros opcionales
+        if (query.tipo) {
+            filter.tipo = query.tipo;
+        }
+        if (query.category) {
+            filter.categoria = query.category;
+        }
+        if (query.search) {
+            filter.$or = [
+                { descripcion: { $regex: query.search, $options: 'i' } },
+                { tags: { $in: [new RegExp(query.search, 'i')] } },
+            ];
+        }
+
+        const items = await pager.applyTo(PersonalFinance.find(filter));
+        const total = await PersonalFinance.countDocuments(filter);
+
+        return { items, total, pager };
+    }
+
+    /**
+     * Restaura una transacción eliminada (revierte soft-delete).
+     * Solo el propietario puede restaurar sus transacciones.
+     */
+    static async restore(id, userId) {
+        const finance = await PersonalFinance.findOne({
+            _id: id,
+            userId,
+            isDeleted: true,
+        });
+
+        if (!finance) {
+            throw AppError.notFound('Transacción eliminada no encontrada');
+        }
+
+        // Revertir soft-delete
+        finance.isDeleted = false;
+        finance.deletedAt = null;
+
+        // Re-aplicar el efecto en los balances de cuentas
+        await PersonalFinanceService._updateAccountBalances(finance, userId, 'create');
+
+        const saved = await finance.save();
+
+        // Invalidar caché de IA
+        await PersonalFinanceService._invalidateAICache(userId);
+
+        return saved.toObject();
+    }
+
+    /**
+     * Elimina permanentemente una transacción (hard delete).
+     * Solo el propietario puede eliminar permanentemente sus transacciones.
+     * Requiere que la transacción esté ya soft-deleted.
+     */
+    static async permanentlyDelete(id, userId) {
+        const finance = await PersonalFinance.findOne({
+            _id: id,
+            userId,
+            isDeleted: true,
+        });
+
+        if (!finance) {
+            throw AppError.notFound('Transacción eliminada no encontrada');
+        }
+
+        // Realizar hard delete
+        await PersonalFinance.deleteOne({ _id: id });
+
+        // Invalidar caché de IA
+        await PersonalFinanceService._invalidateAICache(userId);
+    }
 }
 
 module.exports = PersonalFinanceService;

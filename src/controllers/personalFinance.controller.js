@@ -160,3 +160,69 @@ exports.getSimulation = async (req, res, next) => {
         next(err);
     }
 };
+
+// ─── Soft Delete / Restauración ───────────────────────────────────────────────
+
+/**
+ * GET /api/personal-finance/trash
+ * Lista transacciones eliminadas (soft-deleted) del usuario.
+ * Requiere autenticación.
+ */
+exports.getDeletedTransactions = async (req, res, next) => {
+    try {
+        const { items, total, pager } = await PersonalFinanceService.listDeleted(
+            req.user.userId,
+            req.query
+        );
+        ApiResponse.paginated(res, items, pager.buildMeta(total), {
+            message: 'Transacciones eliminadas'
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * PUT /api/personal-finance/:id/restore
+ * Restaura una transacción eliminada (revierte soft-delete).
+ * Solo el propietario puede restaurar sus transacciones.
+ */
+exports.restoreTransaction = async (req, res, next) => {
+    try {
+        const finance = await PersonalFinanceService.restore(
+            req.params.id,
+            req.user.userId
+        );
+        ApiResponse.success(res, finance, {
+            message: 'Transacción restaurada exitosamente'
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * DELETE /api/personal-finance/:id/permanent
+ * Elimina permanentemente una transacción (hard delete).
+ * Solo el propietario puede eliminar permanentemente sus transacciones.
+ * Requiere confirmación explícita.
+ */
+exports.permanentlyDeleteTransaction = async (req, res, next) => {
+    try {
+        // Validar que el usuario haya pasado una confirmación explícita
+        if (req.query.confirm !== 'true') {
+            return ApiResponse.error(res, 'Se requiere confirmación explícita (confirm=true)', {
+                statusCode: 400,
+                code: 'CONFIRMATION_REQUIRED'
+            });
+        }
+
+        await PersonalFinanceService.permanentlyDelete(
+            req.params.id,
+            req.user.userId
+        );
+        ApiResponse.noContent(res);
+    } catch (err) {
+        next(err);
+    }
+};

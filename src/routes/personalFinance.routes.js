@@ -63,6 +63,17 @@ router.get('/:id',    validateObjectId(), financeController.getFinanceById);
 router.put('/:id',    validateObjectId(), validate(schemas.personalFinance.update), financeController.updateFinance);
 router.delete('/:id', validateObjectId(), financeController.deleteFinance);
 
+// ─── Soft Delete / Restauración ────────────────────────────────────────────────
+
+/** GET /trash - Obtener transacciones eliminadas */
+router.get('/trash', financeController.getDeletedTransactions);
+
+/** PUT /:id/restore - Restaurar una transacción eliminada */
+router.put('/:id/restore', validateObjectId(), financeController.restoreTransaction);
+
+/** DELETE /:id/permanent - Eliminar permanentemente una transacción */
+router.delete('/:id/permanent', validateObjectId(), financeController.permanentlyDeleteTransaction);
+
 /**
  * Montar en app.js como:
  *   app.use('/api/personal-finance', require('./routes/personalFinance.routes'));
