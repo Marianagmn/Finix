@@ -73,6 +73,21 @@ const refreshLimiter = rateLimit({
     legacyHeaders:   false,
 });
 
+/**
+ * Rate limiter para /forgot-password — previene abuso de envío de emails.
+ */
+const forgotPasswordLimiter = rateLimit({
+    windowMs:        60 * 60 * 1000,  // 1 hora
+    max:             3,
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: {
+        success: false,
+        code:    'TOO_MANY_REQUESTS',
+        message: 'Demasiados intentos. Intente en 1 hora.',
+    },
+});
+
 // ─── Rutas públicas ───────────────────────────────────────────────────────────
 
 /**
@@ -176,6 +191,17 @@ router.post(
 );
 
 router.post('/logout', authController.logout);
+
+router.post(
+    '/forgot-password',
+    forgotPasswordLimiter,
+    authController.forgotPassword
+);
+
+router.post(
+    '/reset-password',
+    authController.resetPassword
+);
 
 // ─── Rutas protegidas ─────────────────────────────────────────────────────────
 

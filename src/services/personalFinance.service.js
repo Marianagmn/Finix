@@ -106,6 +106,7 @@ class PersonalFinanceService {
         const filter = { userId };
         if (query.tipo)          filter.tipo   = query.tipo;
         if (query.estado)        filter.estado = query.estado;
+        if (query.categoria)     filter.categoria = query.categoria;
         if (query.esAhorro)      filter.esAhorro = query.esAhorro === 'true';
         if (query.fechaDesde || query.fechaHasta) {
             filter.fecha = {};

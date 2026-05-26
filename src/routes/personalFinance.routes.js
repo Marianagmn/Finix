@@ -50,6 +50,10 @@ router.get('/analysis',   burstLimiter, aiLimiter, financeController.getAnalysis
 router.get('/prediction', burstLimiter, aiLimiter, financeController.getPrediction);
 router.get('/simulation', burstLimiter, aiLimiter, financeController.getSimulation);
 
+// ─── Soft Delete / Restauración (antes de /:id para evitar conflictos de path) ──
+
+router.get('/trash', financeController.getDeletedTransactions);
+
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 router.get('/',  financeController.getAllFinances);
@@ -64,9 +68,6 @@ router.put('/:id',    validateObjectId(), validate(schemas.personalFinance.updat
 router.delete('/:id', validateObjectId(), financeController.deleteFinance);
 
 // ─── Soft Delete / Restauración ────────────────────────────────────────────────
-
-/** GET /trash - Obtener transacciones eliminadas */
-router.get('/trash', financeController.getDeletedTransactions);
 
 /** PUT /:id/restore - Restaurar una transacción eliminada */
 router.put('/:id/restore', validateObjectId(), financeController.restoreTransaction);

@@ -129,6 +129,64 @@ class AuthService {
         }
         return user.toJSON();
     }
+
+    /**
+     * Solicita restablecimiento de contraseña.
+     * Genera un token de reset y lo envía por email (o lo retorna para testing).
+     *
+     * @param {string} email
+     * @returns {Promise<{ message: string, resetToken?: string }>}
+     */
+    static async forgotPassword(email) {
+        const user = await User.findOne({ email });
+        
+        // No revelar si el email existe o no (previene user enumeration)
+        if (!user) {
+            return { message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña' };
+        }
+
+        if (!user.isActive) {
+            throw AppError.forbidden('Cuenta desactivada. Contacte soporte.');
+        }
+
+        // Generar token de reset (válido por 1 hora)
+        const resetToken = user.generatePasswordResetToken();
+        await user.save();
+
+        // TODO: Enviar email con el token
+        // Por ahora, retornar el token para testing en desarrollo
+        console.log('[DEV] Password reset token:', resetToken);
+
+        return { 
+            message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña',
+            resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined
+        };
+    }
+
+    /**
+     * Restablece la contraseña usando un token válido.
+     *
+     * @param {string} token
+     * @param {string} newPassword
+     * @returns {Promise<{ message: string }>}
+     */
+    static async resetPassword(token, newPassword) {
+        const user = await User.findOne({
+            passwordResetToken: token,
+            passwordResetExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            throw AppError.unauthorized('Token inválido o expirado');
+        }
+
+        user.password = newPassword;
+        user.passwordResetToken = undefined;
+        user.passwordResetExpires = undefined;
+        await user.save();
+
+        return { message: 'Contraseña restablecida exitosamente' };
+    }
 }
 
 module.exports = AuthService;

@@ -108,10 +108,42 @@ async function me(req, res, next) {
     }
 }
 
+// ─── Forgot Password ─────────────────────────────────────────────────────────
+
+/**
+ * POST /api/auth/forgot-password
+ * Solicita restablecimiento de contraseña.
+ */
+async function forgotPassword(req, res, next) {
+    try {
+        const { email } = req.body;
+        const result = await AuthService.forgotPassword(email);
+        ApiResponse.success(res, result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /api/auth/reset-password
+ * Restablece contraseña usando token.
+ */
+async function resetPassword(req, res, next) {
+    try {
+        const { token, password } = req.body;
+        const result = await AuthService.resetPassword(token, password);
+        ApiResponse.success(res, result);
+    } catch (err) {
+        next(err);
+    }
+}
+
 module.exports = {
     register,
     login,
     refresh,
     logout,
     me,
+    forgotPassword,
+    resetPassword,
 };

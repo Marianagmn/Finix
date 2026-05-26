@@ -302,6 +302,26 @@ userSchema.methods.isTokenValidAfterPasswordChange = function (jwtIssuedAt) {
     return jwtIssuedAt > changedAtSeconds;
 };
 
+/**
+ * Genera un token de restablecimiento de contraseña.
+ * El token es válido por 1 hora.
+ *
+ * @returns {string} Token de reset (sin encriptar para enviar por email)
+ */
+userSchema.methods.generatePasswordResetToken = function () {
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    this.passwordResetToken = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+    
+    this.passwordResetExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+    
+    return resetToken;
+};
+
 // ─── Statics ──────────────────────────────────────────────────────────────────
 
 /**
