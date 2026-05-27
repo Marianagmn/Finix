@@ -133,6 +133,9 @@ app.use('/api/personal-finance', require('./routes/personalFinance.routes'));
 // Finanzas empresariales
 app.use('/api/business-finance', require('./routes/businessFinance.routes'));
 
+// Gestión de negocios
+app.use('/api/business', require('./routes/business.routes'));
+
 // ─── Ruta base / health check ─────────────────────────────────────────────────
 
 app.get('/', (req, res) => {

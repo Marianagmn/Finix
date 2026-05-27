@@ -103,7 +103,7 @@ class AuthService {
 
         const decoded = JwtUtils.verifyRefreshToken(refreshToken);
 
-        const user = await User.findById(decoded.userId);
+        const user = await User.findById(decoded.userId).select('+businessId');
         if (!user || !user.isActive) {
             throw AppError.unauthorized('Usuario no válido o inactivo');
         }
@@ -123,7 +123,7 @@ class AuthService {
      * @returns {Promise<object>}
      */
     static async getProfile(userId) {
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select('+businessId');
         if (!user) {
             throw AppError.notFound('Usuario no encontrado');
         }

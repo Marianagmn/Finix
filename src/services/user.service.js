@@ -18,7 +18,7 @@ const Pagination    = require('../utils/pagination.utils');
 const { AppError }  = require('../middlewares/error.middleware');
 
 // Campos que un usuario puede editar en su propio perfil
-const ALLOWED_PROFILE_FIELDS = ['name', 'email'];
+const ALLOWED_PROFILE_FIELDS = ['name', 'email', 'businessId'];
 
 // Campos que un admin puede editar (más amplio)
 const ALLOWED_ADMIN_FIELDS   = ['name', 'email', 'roles', 'isActive', 'isEmailVerified'];
@@ -31,7 +31,7 @@ class UserService {
      * @returns {Promise<object>} toJSON() del documento.
      */
     static async getById(userId) {
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select('+businessId');
         if (!user) throw AppError.notFound('Usuario no encontrado');
         return user.toJSON();
     }
@@ -116,7 +116,7 @@ class UserService {
             userId,
             { $set: updates },
             { new: true, runValidators: true }
-        );
+        ).select('+businessId');
 
         if (!user) throw AppError.notFound('Usuario no encontrado');
         return user.toJSON();
@@ -179,7 +179,7 @@ class UserService {
             userId,
             { $set: updates },
             { new: true, runValidators: true }
-        );
+        ).select('+businessId');
 
         if (!user) throw AppError.notFound('Usuario no encontrado');
         return user.toJSON();
@@ -196,7 +196,7 @@ class UserService {
             userId,
             { $set: { isActive: Boolean(isActive) } },
             { new: true }
-        );
+        ).select('+businessId');
         if (!user) throw AppError.notFound('Usuario no encontrado');
         return user.toJSON();
     }

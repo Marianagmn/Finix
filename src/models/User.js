@@ -188,6 +188,7 @@ const userSchema = new Schema({
                 provider:        ret.provider,
                 isActive:        ret.isActive,
                 isEmailVerified: ret.isEmailVerified,
+                businessId:      ret.businessId,
                 lastLoginAt:     ret.lastLoginAt,
                 createdAt:       ret.createdAt,
             };
@@ -331,7 +332,7 @@ userSchema.methods.generatePasswordResetToken = function () {
 userSchema.statics.findByEmailForAuth = function (email) {
     return this
         .findOne({ email: email.toLowerCase() })
-        .select('+password +loginAttempts +lockUntil +passwordChangedAt');
+        .select('+password +loginAttempts +lockUntil +passwordChangedAt +businessId');
 };
 
 /**
