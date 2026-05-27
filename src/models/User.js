@@ -285,6 +285,7 @@ userSchema.methods.generateTokenPair = function () {
         userId: this._id.toString(),
         email:  this.email,
         roles:  this.roles,
+        businessId: this.businessId ? this.businessId.toString() : undefined,
     });
 };
 
